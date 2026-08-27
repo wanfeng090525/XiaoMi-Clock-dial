@@ -2,7 +2,6 @@
 name: Build WatchfaceIdTool
 
 on:
-  push:
   workflow_dispatch:
 
 permissions:
