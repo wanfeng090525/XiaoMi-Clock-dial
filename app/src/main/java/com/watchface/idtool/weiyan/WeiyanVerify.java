@@ -80,6 +80,10 @@ public class WeiyanVerify {
     private static final String FIELD_REMAIN = "c27f13333b755643373328a41fc2c2be1";
     private static final String FIELD_EXPIRE = "s88c959deb8c303e8c81faa52ea5d9e87";
 
+    // 网络异常时禁止在界面上暴露后端地址，统一脱敏为通用文案
+    private static final String SERVER_HOST = "wy.llua.cn";
+    private static final String NETWORK_ERROR_MSG = "网络异常，请检查网络连接";
+
     private final Context mContext;
     private final Handler mMainHandler;
     private AuthCallback mCallback;
@@ -397,13 +401,19 @@ public class WeiyanVerify {
     }
 
     private static String safeMsg(Exception e) {
-        String m = e.getMessage();
-        if (m == null || m.isEmpty()) return e.toString();
-        // 把经典 radix 16 错误转成可读信息
-        if (m.contains("under radix 16") || m.contains("For input string")) {
-            return "响应解密失败（数据格式异常）: " + m;
+        if (e instanceof java.io.IOException) {
+            return NETWORK_ERROR_MSG;
         }
-        return m;
+        String m = e.getMessage();
+        if (m == null || m.isEmpty()) return "操作失败，请稍后重试";
+        // 兜底脱敏：抹掉后端域名与可能的 URL 片段，避免泄露
+        String redacted = m.replace(SERVER_HOST, "server");
+        redacted = redacted.replaceAll("(?i)https?://[^\\s'\"]+", "server");
+        // 把经典 radix 16 错误转成可读信息
+        if (redacted.contains("under radix 16") || redacted.contains("For input string")) {
+            return "响应解密失败（数据格式异常）";
+        }
+        return redacted.trim();
     }
 
     private String getDeviceId() {
