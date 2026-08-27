@@ -5,6 +5,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Debug + Signed Release APK
@@ -45,3 +48,20 @@ jobs:
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           compression-level: 0
+
+      # 构建成功后自动把 APK 原文件发布到 GitHub Release
+      - name: 自动发布到 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: watchface-build-${{ github.run_number }}
+          name: "小米时钟表盘自动构建 #${{ github.run_number }}"
+          body: |
+            本次构建由 GitHub Actions 自动生成。
+            提交: `${{ github.sha }}`
+            Debug 与签名 Release 安装包均已附上,直接下载对应 .apk 即可。
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
