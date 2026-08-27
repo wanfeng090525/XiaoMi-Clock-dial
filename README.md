@@ -1,53 +1,70 @@
-# 🔧 小米表盘 ID 修改工具
-
-> 一款用于 **修改小米手环 / 手表表盘文件中的 WatchFace ID**，并支持 **提取小米账号 Token 与设备 AuthKey** 的轻量级桌面工具。
-> 
-> ✨ 通过替换官方已下载表盘的 ID，绕过 Mi Fitness (小米运动健康) 的校验，实现第三方自定义表盘的安装。
-
-![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20Android-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
-![Release](https://img.shields.io/github/v/release/【你的用户名】/【你的仓库名】)
-
----
-
-## 📖 项目简介
-
-【在此补充 1–3 句话的项目背景】
-
-本项目通过解析小米 `.face` / `.bin` 表盘包的二进制结构，定位并重写其中的 **WatchFace ID 字段**，
-使其可以伪装成官方已下载过的某个正版表盘，从而被小米运动健康 App 正常同步到设备上；
-同时集成了 Token 提取模块，可从本地数据库或云端接口中读取到当前账号绑定的 **AuthKey / MAC 地址**，
-供 Gadgetbridge、Suiteki 等第三方客户端使用。
-
-## 🚀 核心功能
-
-- ✅ **表盘 ID 一键修改** — 自动扫描 `.face` / `.bin` 文件，找到 ID 偏移位置并覆写为新值。
-- ✅ **Token / AuthKey 提取** — 支持从小米运动健康 (Mi Fitness) 数据库或小米云端 API 提取蓝牙配对密钥。
-- ✅ **多设备兼容** — 覆盖小米手环 7/8/9、手表 S3/S4 以及 Redmi Watch 系列。【按实际情况增删】
-- ✅ **GUI 可视化界面** — 图形化操作，无需记忆任何命令行参数。
-- ✅ **批量处理** — 支持拖入多个文件一次完成 ID 替换。
-
-## 📱 已测试支持的设备
-
-| 设备型号 | 固件版本 | 是否测试通过 |
-|---|---|---|
-| Xiaomi Smart Band 8 Pro | 【例：1.4.213】 | ✅ |
-| Xiaomi Watch S3 | 【】 | ✅ |
-| Redmi Watch 4 | 【】 | ⚠️ 部分功能 |
-| 【其他设备】 | 【】 | ❓ 待验证 |
-
-> 如果你在其他机型上使用成功或遇到问题，欢迎提交 Issue 反馈。
-
-## 🛠️ 环境要求
-
-- 【Windows 10 / 11 x64】 或 【Python ≥ 3.9】 或 【Android 8.0+】 —— 三选一按项目类型保留
-- 已安装 **小米运动健康 (Mi Fitness)** 且登录过小米账号（用于 Token 提取）
-- 【可选】Shizuku 授权 或 `Android/data` 访问权限
-
-## 📦 安装方式
-
-### 方式一：下载可执行文件（推荐）
-1. 前往 [Releases](https://github.com/【你的用户名】/【你的仓库名】/releases) 页面下载最新版压缩包。
-2. 解压后双击 `【主程序.exe】` 即可运行，无需安装额外依赖。
-
-### 方式二：源码运行
+⌚ 小米表盘 ID 修改工具
+一款运行在 Android 上的小米手环/手表表盘辅助工具，支持 一键修改表盘 WatchFace ID 与 提取 Token / AuthKey。
+📖 简介
+基于 Kotlin + Jetpack Compose + Material 3 的原生 Android 应用，通过 Shizuku 或文件夹授权读取小米运动健康的数据目录，完成表盘 ID 覆写与设备密钥提取。全部操作本地完成，不联网上传任何数据。
+✨ 功能
+🔧 表盘 ID 修改 — 自动定位 .bin / .face 文件中的 ID 字段并替换
+🔑 Token 提取 — 提取账号绑定设备的 AuthKey 与 MAC 地址
+📲 多设备适配 — 小米手环、Redmi Watch、Xiaomi Watch 等系列
+🎨 现代 UI — Compose Material 3 界面，跟随系统深浅色
+🚫 纯本地运行 — 无广告、无联网、无数据采集
+📱 环境要求
+项目	要求	
+系统	Android 7.0+	
+权限	Shizuku 授权 或 SAF 文件夹授权	
+配套 App	小米运动健康（已登录并绑定手环）	
+📦 安装
+前往 Releases 下载最新 APK 安装即可。
+自行构建：
+git clone https://github.com/wanfeng090525/XiaoMi-Clock-dial.git
+cd XiaoMi-Clock-dial
+./build.sh
+产物输出在 app/build/outputs/apk/ 目录下。
+🚀 使用说明
+一、修改表盘 ID
+在「小米运动健康」中下载任意一款官方免费表盘，随后删除；
+启动本工具，导入第三方表盘文件；
+点击 自动检测 ID，填入新 ID 后点击 写入；
+生成的表盘即可被小米运动健康识别推送。
+💡 第三方表盘 ID 通常与官方冲突，替换为官方曾出现过且已被删除的表盘 ID 后才能正常同步。
+二、提取 Token / AuthKey
+打开 Token 提取 页签，选择授权方式：
+Shizuku 授权：启动 Shizuku 服务后授予权限；
+文件夹授权：选中 Android/data/com.mi.health 目录授权。
+点击 开始提取，获取设备的 MAC 地址与 AuthKey：
+| 字段 | 示例 |
+|---|---|
+| 设备名称 | Xiaomi Smart Band 9 |
+| MAC 地址 | AA:BB:CC:DD:EE:FF |
+| AuthKey | a1b2c3d4e5f6... |
+复制 AuthKey 到 Gadgetbridge、米坛表盘工具等客户端绑定即可。
+⚠️ AuthKey 属于敏感凭据，请妥善保管，切勿泄露。
+❓ FAQ
+<details>
+<summary><b>Shizuku 显示未启动？</b></summary>
+Android 11+ 可通过无线调试激活；部分手机重启后需重新启动服务，或使用 Magisk 方案获得持久权限。
+</details>
+<details>
+<summary><b>无法读取 Android/data 目录？</b></summary>
+改用「文件夹授权」，在系统文件选择器中选中 com.mi.health 目录授予访问权限。
+</details>
+<details>
+<summary><b>提取的 Key 不是最新的？</b></summary>
+在手环端解绑后重新绑定一次，再回到工具重新提取。
+</details>
+<details>
+<summary><b>推送后显示的还是原来的表盘名字？</b></summary>
+正常现象 —— App 显示的是原官方表盘名，实际推送到设备上的已是你的第三方表盘。
+</details>
+<details>
+<summary><b>会变砖吗？</b></summary>
+不会。仅对表盘文件做字节级覆写，不涉及固件分区。建议操作前备份原文件。
+</details>
+🤝 贡献
+欢迎提交 Issue / Pull Request，反馈时请附上设备型号、固件版本与问题截图。
+📄 License
+MIT License
+⚠️ 免责声明
+本项目仅供学习研究与个人使用，禁止商业用途；
+相关操作可能违反小米服务条款，风险由使用者自行承担；
+AuthKey 请妥善保管，谨防泄露造成安全隐患。
