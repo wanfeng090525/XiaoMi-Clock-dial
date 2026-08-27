@@ -9,13 +9,13 @@ plugins {
 
 android {
     namespace = "com.watchface.idtool"
-    compileSdk = 35
-    buildToolsVersion = "34.0.0"
+    compileSdk = 36
+    buildToolsVersion = "36.0.0"
 
     defaultConfig {
         applicationId = "com.watchface.idtool"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 39
         versionName = "3.9"
     }

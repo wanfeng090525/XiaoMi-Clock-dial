@@ -1,4 +1,4 @@
-# GitHub Actions 云一键构建(无需本地环境,推送/手动触发即可打出签名 Release APK)
+# GitHub Actions 云一键构建:自动生成已签名的 Debug 与 Release 两个 APK
 name: Build WatchfaceIdTool
 
 on:
@@ -7,14 +7,14 @@ on:
 
 jobs:
   build:
-    name: Build Release APK
+    name: Build Debug + Signed Release APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - name: Checkout 源码
         uses: actions/checkout@v4
 
-      # AGP 8.6.1 + jvmTarget 21 要求 JDK 21
+      # AGP 8.13 + jvmTarget 21 要求 JDK 21
       - name: 安装 JDK 21
         uses: actions/setup-java@v4
         with:
@@ -26,14 +26,20 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
 
-      - name: 一键构建签名 Release APK (gradlew wrapper)
-        run: ./gradlew --no-daemon assembleRelease
+      # 同时构建 Debug(自动签名)与 Release(使用源码 keystore/watchface.jks 自动签名)
+      - name: 一键构建 Debug + 签名 Release (gradlew wrapper)
+        run: ./gradlew --no-daemon assembleDebug assembleRelease
 
-      - name: 上传 APK 产物
+      - name: 上传 Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: watchface-release-apk
-          path: |
-            app/build/outputs/apk/release/*.apk
-            app/build/outputs/apk/**/*.apk
+          name: watchface-apk-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: 上传 签名 Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: watchface-apk-release
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error

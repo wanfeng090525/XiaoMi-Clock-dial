@@ -25,8 +25,8 @@ echo "      使用 SDK: $SDK"
 echo "==> [2/3] 写入 local.properties (sdk.dir=$SDK)"
 echo "sdk.dir=$SDK" > local.properties
 
-echo "==> [3/3] 执行 Gradle 构建 (assembleRelease, 已内置信签名)"
-./gradlew --no-daemon assembleRelease
+echo "==> [3/3] 执行 Gradle 构建 (Debug + 签名 Release, keystore 已内置)"
+./gradlew --no-daemon assembleDebug assembleRelease
 
 echo ""
 echo "=========================================="
