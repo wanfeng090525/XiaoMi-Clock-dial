@@ -34,42 +34,42 @@ import java.util.Random;
  */
 public class WeiyanVerify {
 
-    // ========================== 接口配置（与最新注入一致） ==========================
+    // ========================== 接口配置（已按最新注入更新） ==========================
     private static final String API_BASE = "https://wy.llua.cn/v2/";
-    private static final String API_PATH = "1e75396ffb329147c8bcf76b8e4d76f2";
+    private static final String API_PATH = "671c3381301b6f153f4d80ac40035687";
     private static final String API_URL = API_BASE + API_PATH;
 
-    private static final String ID_NOTICE = "tz8J8TdxNTx";
-    private static final String ID_UPDATE = "UNZInZiL1UF";
-    private static final String ID_LOGIN = "9b81i8xD6BP";
-    private static final String ID_UNBIND = "qkV9sc4fK7Q";
+    private static final String ID_NOTICE = "ms0mYguHG2G";
+    private static final String ID_UPDATE = "9PcyLozlM4Y";
+    private static final String ID_LOGIN = "4ooszUNauTB";
+    private static final String ID_UNBIND = "988KKVkbV5A";
 
-    private static final int CODE_NOTICE_OK = 76536;
-    private static final int CODE_UPDATE_OK = 93883;
-    private static final int CODE_LOGIN_OK = 27665;
-    private static final int CODE_UNBIND_OK = 91947;
+    private static final int CODE_NOTICE_OK = 59330;
+    private static final int CODE_UPDATE_OK = 58615;
+    private static final int CODE_LOGIN_OK = 11242;
+    private static final int CODE_UNBIND_OK = 89642;
 
     /** 登录/解绑签名盐 */
-    private static final String SIGN_SALT = "z31e06d3b903185aedb4e9ba0f4616c8";
+    private static final String SIGN_SALT = "v71911e38905280a39cde76182a7f3f9";
 
     // 请求加密密钥
-    private static final String KEY_RC4_REQ_1 = "wa255a4dc81f9f09838a63fb11a21";
-    private static final String KEY_RC4_REQ_2 = "e641b334ad5b468b56a";
+    private static final String KEY_RC4_REQ_1 = "q77feae6b8446586fb5b7";
+    private static final String KEY_RC4_REQ_2 = "c5f939f2cfd9fd7c21aec26b60390";
     private static final String KEY_CUSTOM_B64 =
-            "Ig0/pHQidFyeXM73nuYUAj2mwa9ckOzhxDPt6rECNG8vV1LRSKl5BJ4TfoqW+sZb";
+            "fOrYsXDLKjTzilcw6bn321paIxNBetV95MvohAQq+UZRmu/gCyEH0k874SJFWGdP";
 
     // 公告/更新/解绑 响应解密
-    private static final String KEY_RC4_RESP_SIMPLE = "b09f1939f418ca3c8d434652f58d3b65478";
+    private static final String KEY_RC4_RESP_SIMPLE = "o1575eb3e5b1023986c5f5a320b03e8";
 
     // 登录响应解密链
-    private static final String KEY_RC4_LOGIN_1 = "zc67b217c572de56978";
+    private static final String KEY_RC4_LOGIN_1 = "s152f82315f5467e54e94";
     private static final String KEY_CB64_LOGIN_1 =
             "Tfca0Je6PW5Qw1VRYLZC83EKSvtMpFO2ygAz+oj9rhxIBH7mb4slUdiqnGukN/DX";
     private static final String KEY_CB64_LOGIN_2 =
             "63nj1GfBmR720wQh9XM+4teOPSdEJok8FIVasTxglHzAZbLNUDKYWci5uyprq/vC";
     private static final String KEY_CB64_LOGIN_3 =
             "0LEz/itrdl65W3FNOK9uUXefhVncZqsADgjHCyBQv7pm1TwRxIY8Mko4a+SPJ2bG";
-    private static final String KEY_RC4_LOGIN_2 = "t9f8ab2b2e2c6280ed00d6870ac";
+    private static final String KEY_RC4_LOGIN_2 = "l522705c8a2c827ff761d8773";
 
     // 登录成功校验字段
     private static final String FIELD_CODE = "e201896f8a8fb18fa76eeafe71f7db799";
