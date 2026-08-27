@@ -23,7 +23,7 @@ import java.util.Locale;
 import java.util.Random;
 
 /**
- * 微验网络验证 - 独立模块（从最新注入代码提取，无 UI）
+ * 微验网络验证 - 独立模块（密钥与加密/校验逻辑已按最新注入对齐，无 UI）
  *
  * 调用方式：
  *   WeiyanVerify v = new WeiyanVerify(context);
@@ -31,6 +31,7 @@ import java.util.Random;
  *   v.getNotice(); / v.checkUpdate(); / v.login(kami); / v.unbind(kami);
  *
  * 入口保持异步回调，业务层用挂起函数桥接即可。
+ * 密钥来源：上传的最新注入代码 MainActivity.java。
  */
 public class WeiyanVerify {
 
@@ -52,37 +53,32 @@ public class WeiyanVerify {
     /** 登录/解绑签名盐 */
     private static final String SIGN_SALT = "v71911e38905280a39cde76182a7f3f9";
 
-    // 请求加密密钥
+    // 请求加密链：rc4(k1) -> hex -> customB64(charset) -> rc4(k2) -> hex -> stdB64 -> stdB64 -> hex
     private static final String KEY_RC4_REQ_1 = "q77feae6b8446586fb5b7";
     private static final String KEY_RC4_REQ_2 = "c5f939f2cfd9fd7c21aec26b60390";
     private static final String KEY_CUSTOM_B64 =
             "fOrYsXDLKjTzilcw6bn321paIxNBetV95MvohAQq+UZRmu/gCyEH0k874SJFWGdP";
 
-    // 公告/更新/解绑 响应解密
+    // 公告/更新/解绑 响应解密：hex -> RC4
     private static final String KEY_RC4_RESP_SIMPLE = "o1575eb3e5b1023986c5f5a320b03e8";
 
-    // 登录响应解密链
+    // 登录响应解密：hex -> RC4(k1) -> stdB64 -> stdB64 -> hex -> RC4(k2)
     private static final String KEY_RC4_LOGIN_1 = "s152f82315f5467e54e94";
-    private static final String KEY_CB64_LOGIN_1 =
-            "Tfca0Je6PW5Qw1VRYLZC83EKSvtMpFO2ygAz+oj9rhxIBH7mb4slUdiqnGukN/DX";
-    private static final String KEY_CB64_LOGIN_2 =
-            "63nj1GfBmR720wQh9XM+4teOPSdEJok8FIVasTxglHzAZbLNUDKYWci5uyprq/vC";
-    private static final String KEY_CB64_LOGIN_3 =
-            "0LEz/itrdl65W3FNOK9uUXefhVncZqsADgjHCyBQv7pm1TwRxIY8Mko4a+SPJ2bG";
     private static final String KEY_RC4_LOGIN_2 = "l522705c8a2c827ff761d8773";
 
-    // 登录成功校验字段
-    private static final String FIELD_CODE = "e201896f8a8fb18fa76eeafe71f7db799";
-    private static final String FIELD_MSG = "za6e5983651f70247537a6ce2adb9dc16";
-    private static final String FIELD_CHECK = "w9675c338b880efb21864589c7b003ca4";
-    private static final String CHECK_VALUE = "ad2280f4722dc1a2aeee096561ffc2f7";
-    private static final String FIELD_SERVER_TS = "w7c0fe26d8449388e554c87219104e67a";
-    private static final String FIELD_SIGN1 = "h7f2b0109";
-    private static final String FIELD_SIGN2 = "rf312bcc44a63bc0949";
-    private static final String FIELD_SIGN3 = "x4c98f4e0f2d3fafcf6";
-    private static final String FIELD_TYPE = "b43b081705882e569f67283f3567ef164";
-    private static final String FIELD_REMAIN = "ge3e2e51874874cd9ec006250be249ee4";
-    private static final String FIELD_EXPIRE = "aa2edab7368a286d052b2bf0503d00e8a";
+    // 登录成功校验字段（按最新注入）
+    private static final String FIELD_CODE = "yab45d10cdcfdb028840375669da177a2";
+    private static final String FIELD_MSG = "d7ae7b0247872bf8e70e25b4c01e5f2b5";
+    private static final String FIELD_CHECK = "w320acd7c83749c2004c25d57ea6ec018";
+    private static final String CHECK_VALUE = "b2d3332a9b71321722421101a2b318c2";
+    private static final String FIELD_SERVER_TS = "m7ede9fa99978d0ac7f83830240403547";
+    private static final String FIELD_IE = "ie66a556e80e2f031a6f0217c909de76b";
+    private static final String FIELD_SIGN1 = "q6704c7537bf2";
+    private static final String FIELD_SIGN2 = "wfe71da0479bd";
+    private static final String FIELD_SIGN3 = "ybceae94482323a";
+    private static final String FIELD_TYPE = "u1686821dd22b8b848108aa079f8dab50";
+    private static final String FIELD_REMAIN = "c27f13333b755643373328a41fc2c2be1";
+    private static final String FIELD_EXPIRE = "s88c959deb8c303e8c81faa52ea5d9e87";
 
     private final Context mContext;
     private final Handler mMainHandler;
@@ -214,15 +210,14 @@ public class WeiyanVerify {
                         return;
                     }
                     JSONObject msg = json.getJSONObject(FIELD_MSG);
-                    // 签名校验
+                    // 签名校验（与最新注入一致）
+                    String ie = msg.getString(FIELD_IE);
                     String s1 = msg.getString(FIELD_SIGN1);
                     String s2 = msg.getString(FIELD_SIGN2);
                     String s3 = msg.getString(FIELD_SIGN3);
-                    String calc1 = sha256(sha1("" + sign + "" + randomVal + ""));
-                    String calc2 = sha1(sha256("" + randomVal + "" + SIGN_SALT + ""));
-                    String calc3 = md5(md5(sha1(
-                            "" + code + "" + timestamp + "" + code + "" + serverTs + ""
-                    )));
+                    String calc1 = md5(sha1("" + SIGN_SALT + code + ie + ""));
+                    String calc2 = md5(sha1("" + timestamp + ie + ""));
+                    String calc3 = sha1(sha1("" + sign + sign + SIGN_SALT + code + ""));
                     if (!s1.equals(calc1) || !s2.equals(calc2) || !s3.equals(calc3)) {
                         post(() -> {
                             if (mCallback != null) mCallback.onLoginFailed("校验失败");
@@ -241,10 +236,11 @@ public class WeiyanVerify {
                             if (mCallback != null) mCallback.onLoginSuccessSingle(r);
                         });
                     } else {
-                        long expireTs = msg.optLong(FIELD_EXPIRE, 0L);
-                        String expireTime = formatTs(expireTs);
+                        long expireSec = msg.optLong(FIELD_EXPIRE, 0L);
+                        long expireMs = expireSec * 1000L;
+                        String expireTime = formatTs(expireMs);
                         post(() -> {
-                            if (mCallback != null) mCallback.onLoginSuccessTime(expireTime, expireTs);
+                            if (mCallback != null) mCallback.onLoginSuccessTime(expireTime, expireMs);
                         });
                     }
                 } else {
@@ -315,20 +311,19 @@ public class WeiyanVerify {
         }).start();
     }
 
-    // ========================== 请求加密链（与注入一致） ==========================
+    // ========================== 请求加密链（与最新注入一致） ==========================
     /**
-     * 原始参数 → stdB64 → hex → RC4(key1) → hex → stdB64 → RC4(key2) → hex → stdB64 → customB64
+     * 原始参数 -> rc4(k1) -> hex -> customB64(charset) -> rc4(k2) -> hex -> stdB64 -> stdB64 -> hex
      */
     private String buildRequestPayload(String rawParams) {
-        String s1 = standardBase64Encode(rawParams);
-        String s2 = stringToHex(s1);
-        byte[] s3 = rc4(s2.getBytes(StandardCharsets.UTF_8), KEY_RC4_REQ_1);
-        String s4 = bytesToHex(s3);
-        String s5 = standardBase64Encode(s4);
-        byte[] s6 = rc4(s5.getBytes(StandardCharsets.UTF_8), KEY_RC4_REQ_2);
-        String s7 = bytesToHex(s6);
-        String s8 = standardBase64Encode(s7);
-        return customBase64Encode(s8, KEY_CUSTOM_B64);
+        byte[] a = rc4(rawParams.getBytes(StandardCharsets.UTF_8), KEY_RC4_REQ_1);
+        String b = bytesToHex(a);
+        String c = customBase64Encode(b, KEY_CUSTOM_B64);
+        byte[] d = rc4(c.getBytes(StandardCharsets.UTF_8), KEY_RC4_REQ_2);
+        String e = bytesToHex(d);
+        String f = standardBase64Encode(e);
+        String g = standardBase64Encode(f);
+        return bytesToHex(g.getBytes(StandardCharsets.UTF_8));
     }
 
     /** 公告/更新/解绑：hex → RC4 */
@@ -338,17 +333,14 @@ public class WeiyanVerify {
         return new String(rc4(bytes, KEY_RC4_RESP_SIMPLE), StandardCharsets.UTF_8);
     }
 
-    /**
-     * 登录：hex→RC4 → customB64×3 → hex→RC4
-     */
+    /** 登录：hex→RC4(k1) → stdB64 → stdB64 → hex→RC4(k2) */
     private String decryptLogin(String response) throws Exception {
-        String hex = sanitizeHex(response);
-        byte[] b1 = hexToBytes(hex);
+        String hex1 = sanitizeHex(response);
+        byte[] b1 = hexToBytes(hex1);
         String s1 = new String(rc4(b1, KEY_RC4_LOGIN_1), StandardCharsets.UTF_8);
-        String s2 = customBase64Decode(s1, KEY_CB64_LOGIN_1);
-        String s3 = customBase64Decode(s2, KEY_CB64_LOGIN_2);
-        String s4 = customBase64Decode(s3, KEY_CB64_LOGIN_3);
-        String hex2 = sanitizeHex(s4);
+        String s2 = standardBase64Decode(s1);
+        String s3 = standardBase64Decode(s2);
+        String hex2 = sanitizeHex(s3);
         byte[] b2 = hexToBytes(hex2);
         return new String(rc4(b2, KEY_RC4_LOGIN_2), StandardCharsets.UTF_8);
     }
@@ -587,6 +579,11 @@ public class WeiyanVerify {
             }
         }
         return new String(decoded, StandardCharsets.UTF_8);
+    }
+
+    /** 标准 base64 解码 */
+    private static String standardBase64Decode(String input) {
+        return customBase64Decode(input, new String(STD_B64));
     }
 
     private static String stringToHex(String str) {
