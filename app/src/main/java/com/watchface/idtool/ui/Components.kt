@@ -414,7 +414,7 @@ fun GlassSlider(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight()
+                .matchParentSize()
                 .pointerInput(intervals, playSound) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
