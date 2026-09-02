@@ -76,6 +76,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
@@ -94,6 +95,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -203,7 +205,8 @@ fun Modifier.glass(
     // 统一裁剪到圆角轮廓内绘制：描边/高光一律不越出圆角边界，
     // 根治深色背景下小尺寸图标「四角白色残留 / 方形轮廓」渲染缺陷
     //（双描边沿轮廓线居中绘制时，外侧一半会透出圆角边界叠加成残影）
-    clipPath(outline) {
+    val outlinePath = Path().apply { addOutline(outline) }
+    clipPath(outlinePath) {
         // 1. 玻璃主体
         drawOutline(
             outline = outline,
@@ -336,21 +339,28 @@ fun GlassSlider(
     }
 
     BoxWithConstraints(modifier = modifier.height(32.dp)) {
+        // 统一换算到像素，避免 Dp/Px 混算与 BoxScope.align 类型歧义
+        val trackH = with(density) { 6.dp.toPx() }
+        val thumbPx = with(density) { 24.dp.toPx() }
+        val barH = with(density) { 32.dp.toPx() }
         val trackW = with(density) { maxWidth.toPx() }
-        val thumbPx = 24.dp.toPx()
+        // 垂直居中：滑块 24dp 与轨道 6dp 对齐到同一条中心线
+        val thumbTop = (barH - thumbPx) / 2f
+        val trackTop = thumbTop + (thumbPx - trackH) / 2f
         val thumbX = thumbFrac.value * (trackW - thumbPx)
         val thumbCenter = thumbX + thumbPx / 2f
-        val trackH = 6.dp.toPx()
 
         // 未激活轨道（凹槽底）
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.CenterVertically)
                 .height(6.dp)
+                .offset { IntOffset(0, trackTop.roundToInt()) }
                 .drawBehind {
                     drawRoundRect(
                         color = Color.White.copy(alpha = 0.14f),
+                        topLeft = Offset.Zero,
+                        size = Size(size.width, trackH),
                         cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
                     )
                 }
@@ -359,10 +369,11 @@ fun GlassSlider(
         // 已激活填充（左至滑块中心的白色液态渐变 + 微光）
         Box(
             modifier = Modifier
-                .align(Alignment.CenterVertically)
+                .fillMaxWidth()
                 .height(6.dp)
-                .width(with(density) { thumbCenter.toDp() })
+                .offset { IntOffset(0, trackTop.roundToInt()) }
                 .drawBehind {
+                    val w = thumbCenter.coerceIn(0f, size.width)
                     drawRoundRect(
                         brush = Brush.horizontalGradient(
                             colors = listOf(
@@ -370,7 +381,9 @@ fun GlassSlider(
                                 Color.White.copy(alpha = 0.55f)
                             )
                         ),
-                        cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
+                        topLeft = Offset.Zero,
+                        size = Size(w, size.height),
+                        cornerRadius = CornerRadius(size.height / 2f, size.height / 2f)
                     )
                 }
         )
@@ -378,9 +391,8 @@ fun GlassSlider(
         // 圆形玻璃滑块（按压放大 + 光晕 + 中心白核）
         Box(
             modifier = Modifier
-                .align(Alignment.CenterVertically)
                 .size(24.dp)
-                .offset { IntOffset(thumbX.roundToInt(), 0) }
+                .offset { IntOffset(thumbX.roundToInt(), thumbTop.roundToInt()) }
                 .graphicsLayer {
                     scaleX = thumbScale
                     scaleY = thumbScale

@@ -22,7 +22,7 @@ enum class SoundType(val file: String) {
 /**
  * 点击音效（SoundPool 低延迟播放）
  *
- * · 音源：assets/sounds/*.wav（Python 合成的玻璃触击音，多音色调配）
+ * · 音源：assets/sounds 下多份 WAV 音效（Python 合成的玻璃触击音，多音色调配）
  * · 音频通道：USAGE_MEDIA —— 跟随媒体音量，不受系统「触摸提示音」开关
  *   影响（此前用 SONIFICATION 通道在多数设备上被系统静音，导致只感
  *   觉到振动而听不到声音，正是用户反馈的问题）
