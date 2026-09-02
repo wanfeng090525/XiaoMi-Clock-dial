@@ -1,6 +1,7 @@
 package com.watchface.idtool.ui
 
 import android.app.Activity
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -61,6 +62,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -72,7 +74,6 @@ import com.watchface.idtool.MainViewModel
 import com.watchface.idtool.PermissionStatus
 import com.watchface.idtool.SagAuthManager
 import com.watchface.idtool.UiState
-import com.watchface.idtool.VpnDetector
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -268,46 +269,75 @@ fun SettingsScreen(
 
         Spacer(Modifier.height(22.dp))
 
-        // ============ 安全设置 ============
-        StaggeredItem(index = 7) { SectionLabel("安全设置") }
-        Spacer(Modifier.height(10.dp))
-        StaggeredItem(index = 8) {
-            val vpnActive = VpnDetector.isVpnActive(context)
-            GlassCard(contentPadding = 6.dp) {
-                SettingsRow(
-                    icon = Icons.Default.Security,
-                    iconTint = if (vpnActive) AppColors.dangerAdaptive() else AppColors.successAdaptive(),
-                    title = "VPN 检测",
-                    subtitle = if (vpnActive) "检测到 VPN，部分功能可能受限" else "未检测到 VPN",
-                    onClick = {}
-                )
-            }
-        }
-
-        Spacer(Modifier.height(22.dp))
-
         // ============ 关于 ============
         StaggeredItem(index = 9) { SectionLabel("关于") }
         Spacer(Modifier.height(10.dp))
         StaggeredItem(index = 10) {
-            GlassCard {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconBadge(Icons.Default.VerifiedUser, MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 表盘 ID 工具：与 Github 按钮等宽并行，比例协调
+                GlassCard(modifier = Modifier.weight(1f), shape = RoundedCornerShape(22.dp)) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        IconBadge(Icons.Default.VerifiedUser, MaterialTheme.colorScheme.primary, size = 42.dp)
+                        Spacer(Modifier.height(10.dp))
                         Text(
                             text = "表盘 ID 工具",
-                            fontSize = 15.sp,
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(3.dp))
                         Text(
-                            text = "WATCHFACE ID TOOL · v${BuildConfig.VERSION_NAME}\n" +
-                                    "液态玻璃界面 · Barlow 字体",
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "WATCHFACE ID TOOL · v${BuildConfig.VERSION_NAME}",
+                            fontSize = 9.sp,
+                            lineHeight = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+
+                // Github 按钮：点击跳转开源仓库
+                GlassCard(
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/wanfeng090525/XiaoMi-Clock-dial"))
+                            )
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(22.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            painter = painterResource(id = com.watchface.idtool.R.drawable.ic_github),
+                            contentDescription = "Github 图标",
+                            tint = Color(0xFFF3F5FA),
+                            modifier = Modifier.size(38.dp)
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = "Github 图标",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = "查看开源仓库",
+                            fontSize = 9.sp,
+                            lineHeight = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
                 }
@@ -572,7 +602,7 @@ private fun SettingsSwitchRow(
             checked = checked,
             onCheckedChange = { next ->
                 if (AppSettings.soundEnabled) {
-                    com.watchface.idtool.ClickSound.play(context)
+                    com.watchface.idtool.ClickSound.play(context, com.watchface.idtool.SoundType.TOGGLE)
                 }
                 onCheckedChange(next)
             },

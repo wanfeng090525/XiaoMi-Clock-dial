@@ -105,6 +105,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.watchface.idtool.AppSettings
 import com.watchface.idtool.BgMode
 import com.watchface.idtool.ClickSound
+import com.watchface.idtool.SoundType
 import java.io.File
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
@@ -401,7 +402,7 @@ fun GlassSlider(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val downF = (down.position.x / trackW.coerceAtLeast(1f)).coerceIn(0f, 1f)
                         onValueChange(valueFromFraction(downF))
-                        if (playSound && AppSettings.soundEnabled) ClickSound.play(context)
+                        if (playSound && AppSettings.soundEnabled) ClickSound.play(context, SoundType.SLIDER)
                         dragging = true
                         var lastTick = (downF * intervals).roundToInt()
                         drag(down.id) { change ->
@@ -410,7 +411,7 @@ fun GlassSlider(
                             val tick = (f * intervals).roundToInt()
                             if (playSound && steps > 0 && tick != lastTick) {
                                 lastTick = tick
-                                ClickSound.play(context)
+                                ClickSound.play(context, SoundType.SLIDER)
                             }
                             onValueChange(valueFromFraction(f))
                         }
@@ -1780,7 +1781,7 @@ fun GlassNavBar(
                         .clickable(interactionSource = interaction, indication = null) {
                             if (!isSelected) {
                                 if (AppSettings.soundEnabled) {
-                                    ClickSound.play(navContext)
+                                    ClickSound.play(navContext, SoundType.TOGGLE)
                                 }
                                 onSelect(index)
                             }

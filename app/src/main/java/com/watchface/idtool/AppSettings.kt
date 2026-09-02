@@ -1,11 +1,9 @@
 package com.watchface.idtool
 
 import android.content.Context
-import android.content.res.Configuration
 import android.net.Uri
 import androidx.compose.runtime.mutableStateOf
 import java.io.File
-import kotlin.math.roundToInt
 
 // ====================================================================
 // 背景配置
@@ -106,18 +104,6 @@ object AppSettings {
         val clamped = factor.coerceIn(DENSITY_MIN, DENSITY_MAX)
         densityFactor = clamped
         prefs(context).edit().putFloat(KEY_DENSITY, clamped).apply()
-    }
-
-    /** attachBaseContext 中包装：按系数缩放 densityDpi */
-    fun applyDensity(base: Context): Context {
-        if (densityFactor == 1.0f) return base
-        return try {
-            val cfg = Configuration(base.resources.configuration)
-            cfg.densityDpi = (base.resources.displayMetrics.densityDpi * densityFactor).roundToInt()
-            base.createConfigurationContext(cfg)
-        } catch (_: Exception) {
-            base
-        }
     }
 
     // ---------- 公告开关 ----------

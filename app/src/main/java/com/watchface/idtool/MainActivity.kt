@@ -2,6 +2,8 @@ package com.watchface.idtool
 
 import android.app.Activity
 import android.content.Context
+import android.content.res.Configuration
+import android.content.res.Resources
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -47,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlin.math.roundToInt
 import com.watchface.idtool.ui.AppBackground
 import com.watchface.idtool.ui.GlassFabButton
 import com.watchface.idtool.ui.GlassNavTab
@@ -64,38 +67,56 @@ import com.watchface.idtool.ui.WelcomeScreen
 
 class MainActivity : ComponentActivity() {
 
-    /** DPI 密度缩放：在 Context 附加阶段生效 */
-    override fun attachBaseContext(base: Context) {
-        AppSettings.load(base)
-        super.attachBaseContext(AppSettings.applyDensity(base))
+    /** DPI 密度缩放：在 Context 附加阶段以一致的方式缩放 density/scaledDensity */
+    override fun attachBaseContext(newBase: Context) {
+        AppSettings.load(newBase)
+        val factor = AppSettings.densityFactor
+        super.attachBaseContext(
+            if (factor == 1f) newBase else DensityScaledContext(newBase, factor)
+        )
+    }
+
+    /**
+     * 按系数缩放 densityDpi，并让 density / scaledDensity / fontScale 保持同步。
+     * 仅改 densityDpi 会造成 sp 文字与 dp 布局比例不一致，导致增大密度后文字异常显示；
+     * 这里显式统一三者的转换关系，保证文字与布局同步缩放。
+     */
+    private class DensityScaledContext(base: Context, private val factor: Float) :
+        android.content.ContextWrapper(base) {
+
+        private val scaledResources: Resources by lazy {
+            val res = super.getResources()
+            val dm = res.displayMetrics
+            val baseDensity = dm.density
+            // 保留系统字体缩放，避免破坏“文字大小”辅助功能设置
+            val fontScale = if (baseDensity > 0f) dm.scaledDensity / baseDensity else 1f
+            val targetDpi = (dm.densityDpi * factor).roundToInt()
+            val newDensity = targetDpi / 160f
+
+            val cfg = Configuration(res.configuration)
+            cfg.densityDpi = targetDpi
+            cfg.fontScale = fontScale
+
+            val wrapped = base.createConfigurationContext(cfg).resources
+            wrapped.displayMetrics.apply {
+                this.density = newDensity
+                this.scaledDensity = newDensity * fontScale
+                this.densityDpi = targetDpi
+            }
+            wrapped
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun getResources(): Resources = scaledResources
     }
 
     override fun onResume() {
         super.onResume()
-        if (VpnDetector.isVpnActive(this)) {
-            android.widget.Toast.makeText(
-                this,
-                com.watchface.idtool.ui.AppLocale.t("检测到 VPN 连接，已退出应用"),
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
-            finishAffinity()
-        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // VPN 检测：检测到 VPN 连接时立即退出应用
-        if (VpnDetector.isVpnActive(this)) {
-            android.widget.Toast.makeText(
-                this,
-                com.watchface.idtool.ui.AppLocale.t("检测到 VPN 连接，已退出应用"),
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
-            finishAffinity()
-            return
-        }
-        
         // 深色玻璃主题：状态栏/导航栏使用浅色图标
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
