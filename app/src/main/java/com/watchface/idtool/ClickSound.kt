@@ -80,9 +80,18 @@ object ClickSound {
     /** 通用点击（向后兼容：未显式指定类型一律走 CLICK） */
     fun play(context: Context) = play(context, SoundType.CLICK)
 
-    /** 按控件类型播放对应音效（开关关闭时完全静默；节流防连点轰炸） */
+    /**
+     * 按控件类型播放对应反馈（音效与震动完全独立，可在设置页分别开关）：
+     *   · 音效  仅当 AppSettings.soundEnabled 时走 SoundPool
+     *   · 震动  仅当 AppSettings.vibrationEnabled 时走系统 Vibrator（Haptics）
+     */
     fun play(context: Context, type: SoundType) {
-        if (!AppSettings.soundEnabled) return
+        if (AppSettings.soundEnabled) playSound(context, type)
+        if (AppSettings.vibrationEnabled) Haptics.play(context, type)
+    }
+
+    /** 音效通道：SoundPool 低延迟播放（震动由 Haptics 独立处理） */
+    private fun playSound(context: Context, type: SoundType) {
         try {
             if (soundPool == null || !loaded) {
                 soundPool?.release()

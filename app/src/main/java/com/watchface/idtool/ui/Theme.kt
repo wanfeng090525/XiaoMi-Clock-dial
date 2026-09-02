@@ -80,20 +80,20 @@ private val LiquidDarkColors = darkColorScheme(
  */
 object GlassPalette {
 
-    /** 玻璃面板底色 */
-    val glassTintTop = Color.White.copy(alpha = 0.13f)
-    val glassTintBottom = Color.White.copy(alpha = 0.05f)
+    /** 玻璃面板底色（iOS 27 液态玻璃：更高透亮、更富体积感） */
+    val glassTintTop = Color.White.copy(alpha = 0.16f)
+    val glassTintBottom = Color.White.copy(alpha = 0.07f)
 
     /** 激活态玻璃 */
-    val glassActiveTintTop = Color.White.copy(alpha = 0.34f)
-    val glassActiveTintBottom = Color.White.copy(alpha = 0.18f)
+    val glassActiveTintTop = Color.White.copy(alpha = 0.38f)
+    val glassActiveTintBottom = Color.White.copy(alpha = 0.20f)
 
     /** 顶部液态光泽 */
-    val highlight = Color.White.copy(alpha = 0.30f)
+    val highlight = Color.White.copy(alpha = 0.36f)
 
     /** 菲涅尔边缘：左上亮缘 / 右下暗缘 */
-    val rimBright = Color.White.copy(alpha = 0.40f)
-    val rimDim = Color.Black.copy(alpha = 0.35f)
+    val rimBright = Color.White.copy(alpha = 0.46f)
+    val rimDim = Color.Black.copy(alpha = 0.30f)
 
     /** 兼容旧 API */
     val glassTintLightTop = glassTintTop

@@ -72,6 +72,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -315,16 +316,11 @@ fun GlassSlider(
     val fraction = ((value - min) / span).coerceIn(0f, 1f)
 
     var dragging by remember { mutableStateOf(false) }
-    val thumbFrac = remember { Animatable(fraction) }
-
-    // 拖动跟手；松手弹簧归位（iOS 液态手感）
-    LaunchedEffect(fraction, dragging) {
-        if (dragging) thumbFrac.snapTo(fraction)
-        else thumbFrac.animateTo(fraction, spring(dampingRatio = 0.5f, stiffness = 620f))
-    }
+    // 位置由 value 直接驱动，不再经过 Animatable 弹簧（此前松手弹簧归位会让
+    // 滑块与手指不同步、拖不动；现在跟手零延迟）。仅保留按压放大的手感反馈。
     val thumbScale by animateFloatAsState(
-        targetValue = if (dragging) 1.22f else 1f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = 700f),
+        targetValue = if (dragging) 1.2f else 1f,
+        animationSpec = tween(110),
         label = "sliderThumbScale"
     )
 
@@ -347,7 +343,8 @@ fun GlassSlider(
         // 垂直居中：滑块 24dp 与轨道 6dp 对齐到同一条中心线
         val thumbTop = (barH - thumbPx) / 2f
         val trackTop = thumbTop + (thumbPx - trackH) / 2f
-        val thumbX = thumbFrac.value * (trackW - thumbPx)
+        // 滑块位置由 value 计算得出（去掉 spring 后纯跟手，无延迟）
+        val thumbX = fraction * (trackW - thumbPx)
         val thumbCenter = thumbX + thumbPx / 2f
 
         // 未激活轨道（凹槽底）
@@ -388,7 +385,7 @@ fun GlassSlider(
                 }
         )
 
-        // 圆形玻璃滑块（按压放大 + 光晕 + 中心白核）
+        // 圆形玻璃滑块（纯显示，位置由 value 驱动，不承担任何手势——手势在下方整条触控层）
         Box(
             modifier = Modifier
                 .size(24.dp)
@@ -409,22 +406,36 @@ fun GlassSlider(
                         center = this.center
                     )
                 }
-                .pointerInput(Unit) {
+        )
+
+        // 全宽触控层（最上层）：
+        //   pointerInput 挂在「整条轨道」而非移动的滑块上——
+        //   拖动时坐标原点相对整条固定，从任意位置按住都可滑，根治「拖不动」。
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .pointerInput(intervals, playSound) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        val downF = (down.position.x / trackW.coerceAtLeast(1f)).coerceIn(0f, 1f)
-                        onValueChange(valueFromFraction(downF))
-                        if (playSound && AppSettings.soundEnabled) ClickSound.play(context, SoundType.SLIDER)
                         dragging = true
-                        var lastTick = (downF * intervals).roundToInt()
-                        drag(down.id) { change ->
-                            change.consume()
-                            val f = (change.position.x / trackW.coerceAtLeast(1f)).coerceIn(0f, 1f)
-                            val tick = (f * intervals).roundToInt()
-                            if (playSound && steps > 0 && tick != lastTick) {
+                        fun fracOf(x: Float): Float =
+                            (x / trackW.coerceAtLeast(1f)).coerceIn(0f, 1f)
+
+                        var lastTick = (fracOf(down.position.x) * intervals).roundToInt()
+                        fun playStepIfChanged(x: Float) {
+                            if (!playSound || steps <= 0) return
+                            val tick = (fracOf(x) * intervals).roundToInt()
+                            if (tick != lastTick) {
                                 lastTick = tick
                                 ClickSound.play(context, SoundType.SLIDER)
                             }
+                        }
+                        onValueChange(valueFromFraction(fracOf(down.position.x)))
+                        drag(down.id) { change ->
+                            change.consume()
+                            val f = fracOf(change.position.x)
+                            playStepIfChanged(change.position.x)
                             onValueChange(valueFromFraction(f))
                         }
                         dragging = false
@@ -710,7 +721,7 @@ fun LiquidBackground(modifier: Modifier = Modifier) {
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(46_000, easing = LinearEasing),
+            animation = tween(34_000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "ambientT"
@@ -719,18 +730,18 @@ fun LiquidBackground(modifier: Modifier = Modifier) {
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
-            animation = tween(120_000, easing = LinearEasing),
+            animation = tween(90_000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ),
         label = "sweepT"
     )
 
     val blobs = listOf(
-        AmbientBlob(Color(0xFF8A72FF), 0.14f, 0.20f, 1.45f, 0.10f, 0.00f, 0.30f), // 紫 · 左上
-        AmbientBlob(Color(0xFF4E74FF), 0.88f, 0.36f, 1.30f, 0.09f, 1.70f, 0.26f), // 蓝 · 右上
-        AmbientBlob(Color(0xFF35C8BE), 0.28f, 0.88f, 1.18f, 0.08f, 3.10f, 0.18f), // 青 · 左下
-        AmbientBlob(Color(0xFFB06A9E), 0.84f, 0.93f, 1.10f, 0.07f, 4.50f, 0.14f), // 玫瑰 · 右下
-        AmbientBlob(Color(0xFF5E6BD8), 0.52f, 0.55f, 1.60f, 0.05f, 2.40f, 0.12f)  // 靛 · 中央体积光
+        AmbientBlob(Color(0xFF8A72FF), 0.14f, 0.20f, 1.45f, 0.11f, 0.00f, 0.38f), // 紫 · 左上
+        AmbientBlob(Color(0xFF4E74FF), 0.88f, 0.36f, 1.30f, 0.10f, 1.70f, 0.34f), // 蓝 · 右上
+        AmbientBlob(Color(0xFF35C8BE), 0.28f, 0.88f, 1.18f, 0.09f, 3.10f, 0.24f), // 青 · 左下
+        AmbientBlob(Color(0xFFB06A9E), 0.84f, 0.93f, 1.10f, 0.08f, 4.50f, 0.18f), // 玫瑰 · 右下
+        AmbientBlob(Color(0xFF5E6BD8), 0.52f, 0.55f, 1.60f, 0.06f, 2.40f, 0.16f)  // 靛 · 中央体积光
     )
 
     // 胶片颗粒：纹理只创建一次，ShaderBrush 平铺整屏
@@ -1544,6 +1555,7 @@ fun GlassIconButton(
     Box(
         modifier = modifier
             .size(size)
+            .clip(CircleShape)
             .glassShadow(3.dp, CircleShape)
             .pressScale(interaction, pressedScale = 0.88f)
             .glass(CircleShape, colors)
@@ -1762,18 +1774,26 @@ fun GlassNavBar(
         ) {
             tabs.forEachIndexed { index, tab ->
                 val isSelected = index == safeIndex
+                val interaction = remember { MutableInteractionSource() }
+                // iOS 液态 Dock：所有 Tab 始终同时显示「图标 + 文字」，
+                // 非选中整体收缩 + 变暗，选中项以弹簧微弹到全亮 + 原大。
+                // 选中态的玻璃指示条在底层随切换弹滑，避免"仅选中展开图标"的割裂动画。
                 val contentColor by animateColorAsState(
                     targetValue = if (isSelected) Color(0xFFF3F5FA)
                     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                    animationSpec = tween(240),
+                    animationSpec = tween(220),
                     label = "navColor$index"
                 )
-                val iconScale by animateFloatAsState(
-                    targetValue = if (isSelected) 1f else 0.4f,
-                    animationSpec = spring(dampingRatio = 0.45f, stiffness = 700f),
-                    label = "navIcon$index"
+                val contentAlpha by animateFloatAsState(
+                    targetValue = if (isSelected) 1f else 0.55f,
+                    animationSpec = tween(200),
+                    label = "navAlpha$index"
                 )
-                val interaction = remember { MutableInteractionSource() }
+                val contentScale by animateFloatAsState(
+                    targetValue = if (isSelected) 1f else 0.90f,
+                    animationSpec = spring(dampingRatio = 0.55f, stiffness = 680f),
+                    label = "navScale$index"
+                )
 
                 Box(
                     modifier = Modifier
@@ -1792,41 +1812,28 @@ fun GlassNavBar(
                         )
                         .clickable(interactionSource = interaction, indication = null) {
                             if (!isSelected) {
-                                if (AppSettings.soundEnabled) {
-                                    ClickSound.play(navContext, SoundType.TOGGLE)
-                                }
+                                ClickSound.play(navContext, SoundType.TOGGLE)
                                 onSelect(index)
                             }
                         }
-                        .padding(horizontal = if (isSelected) 15.dp else 12.dp),
+                        .padding(horizontal = 13.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // 图标：仅选中时展开（宽度 + 缩放双重动画）
-                        AnimatedVisibility(
-                            visible = isSelected,
-                            enter = fadeIn(tween(200)) + expandHorizontally(
-                                animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f)
-                            ),
-                            exit = fadeOut(tween(150)) + shrinkHorizontally(
-                                animationSpec = tween(180)
-                            )
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    tab.icon,
-                                    contentDescription = tab.label,
-                                    tint = contentColor,
-                                    modifier = Modifier
-                                        .size(17.dp)
-                                        .graphicsLayer {
-                                            scaleX = iconScale
-                                            scaleY = iconScale
-                                        }
-                                )
-                                Spacer(Modifier.width(6.dp))
-                            }
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = contentScale
+                            scaleY = contentScale
+                            alpha = contentAlpha
                         }
+                    ) {
+                        Icon(
+                            tab.icon,
+                            contentDescription = tab.label,
+                            tint = contentColor,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
                         Text(
                             text = tab.label,
                             fontSize = 13.sp,
@@ -1886,6 +1893,7 @@ fun GlassFabButton(
     Box(
         modifier = modifier
             .size(size)
+            .clip(CircleShape)
             .graphicsLayer {
                 // 激活时轻微放大，强化「卫星按钮」选中感
                 val s = if (selected) 1.06f else 1f

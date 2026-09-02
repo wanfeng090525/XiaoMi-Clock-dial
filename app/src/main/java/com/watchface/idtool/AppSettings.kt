@@ -35,6 +35,7 @@ data class BgConfig(
  * · bgMode/bgColor     背景样式（默认壁纸 / 相册图片·含动图 / 纯色 / 液态动态）
  * · announceAutoShow   启动时自动弹出新公告（开关，默认开）
  * · soundEnabled       点击音效（开关，默认开）
+ * · vibrationEnabled   震动反馈（开关，默认开；独立于音效，可分别设置）
  * · snowEnabled        雪花飘落特效（开关，默认开）
  */
 object AppSettings {
@@ -46,6 +47,7 @@ object AppSettings {
     private const val KEY_BG_COLOR = "bg_color"
     private const val KEY_ANNOUNCE_AUTO = "announce_auto_show"
     private const val KEY_SOUND = "sound_enabled"
+    private const val KEY_VIBRATION = "vibration_enabled"
     private const val KEY_SNOW = "snow_enabled"
 
     /** 密度拉条范围：80% ~ 110% */
@@ -68,6 +70,10 @@ object AppSettings {
     val soundEnabledState = mutableStateOf(true)
     val soundEnabled: Boolean get() = soundEnabledState.value
 
+    /** 震动反馈（响应式开关；独立于音效，可分别控制） */
+    val vibrationEnabledState = mutableStateOf(true)
+    val vibrationEnabled: Boolean get() = vibrationEnabledState.value
+
     /** 雪花飘落特效（响应式开关） */
     val snowEnabledState = mutableStateOf(true)
     val snowEnabled: Boolean get() = snowEnabledState.value
@@ -85,6 +91,7 @@ object AppSettings {
         )
         announceAutoShowState.value = p.getBoolean(KEY_ANNOUNCE_AUTO, true)
         soundEnabledState.value = p.getBoolean(KEY_SOUND, true)
+        vibrationEnabledState.value = p.getBoolean(KEY_VIBRATION, true)
         snowEnabledState.value = p.getBoolean(KEY_SNOW, true)
         com.watchface.idtool.ui.AppLocale.apply(p.getString(KEY_LANG, "zh") ?: "zh")
     }
@@ -116,6 +123,16 @@ object AppSettings {
     fun setSoundEnabled(context: Context, enabled: Boolean) {
         soundEnabledState.value = enabled
         prefs(context).edit().putBoolean(KEY_SOUND, enabled).apply()
+    }
+
+    // ---------- 震动反馈开关 ----------
+    fun setVibrationEnabled(context: Context, enabled: Boolean) {
+        vibrationEnabledState.value = enabled
+        prefs(context).edit().putBoolean(KEY_VIBRATION, enabled).apply()
+        if (!enabled) {
+            // 关闭后即刻取消尚未完成的震动
+            Haptics.cancel(context.applicationContext)
+        }
     }
 
     // ---------- 雪花特效开关 ----------
