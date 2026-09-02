@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Gradient
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.FolderOpen
@@ -82,9 +81,8 @@ import kotlin.math.roundToInt
  *
  * 结构：
  *   1. 权限管理    当前状态卡 + 重新检测 / Shizuku 授权
- *   2. 数据管理    清除已导入文件 / 清空修改记录（带确认弹窗）
- *   3. 应用与更新  检查更新 + 公告
- *   4. 关于        版本信息
+ *   2. 应用与更新  检查更新 + 公告
+ *   3. 关于        版本信息
  *
  * 所有图标均置于透明玻璃容器中（玻璃容器 + 实心图标规格）。
  */
@@ -93,8 +91,6 @@ fun SettingsScreen(
     viewModel: MainViewModel,
     state: UiState
 ) {
-    var showClearFilesDialog by remember { mutableStateOf(false) }
-    var showClearRecordsDialog by remember { mutableStateOf(false) }
     var showLangDialog by remember { mutableStateOf(false) }
     var showBgDialog by remember { mutableStateOf(false) }
     var showColorDialog by remember { mutableStateOf(false) }
@@ -211,7 +207,7 @@ fun SettingsScreen(
                         BgMode.GALLERY -> "自定义图片"
                         BgMode.COLOR -> "纯色背景"
                         BgMode.LIQUID -> "液态动态"
-                        else -> "默认壁纸"
+                        else -> "液态动态"   // 原默认壁纸已移除，统一按液态动态展示
                     },
                     onClick = { showBgDialog = true }
                 )
@@ -232,33 +228,6 @@ fun SettingsScreen(
                     subtitle = if (snowOn) "已开启全屏雪花特效" else "已关闭",
                     checked = snowOn,
                     onCheckedChange = { AppSettings.setSnowEnabled(context, it) }
-                )
-            }
-        }
-
-        Spacer(Modifier.height(22.dp))
-
-        // ============ 数据管理 ============
-        StaggeredItem(index = 5) { SectionLabel("数据管理") }
-        Spacer(Modifier.height(10.dp))
-        StaggeredItem(index = 6) {
-            GlassCard(contentPadding = 6.dp) {
-                SettingsRow(
-                    icon = Icons.Default.DeleteSweep,
-                    iconTint = AppColors.infoAdaptive(),
-                    title = "清除已导入文件",
-                    subtitle = AppLocale.tf("当前 {0} 个表盘文件", state.importedFiles.size),
-                    onClick = { showClearFilesDialog = true }
-                )
-                SettingsDivider()
-                SettingsRow(
-                    icon = Icons.Default.DeleteSweep,
-                    iconTint = AppColors.dangerAdaptive(),
-                    title = "清空修改记录",
-                    subtitle = AppLocale.tf("当前 {0} 条记录", state.records.size),
-                    onClick = {
-                        showClearRecordsDialog = true
-                    }
                 )
             }
         }
@@ -361,14 +330,10 @@ fun SettingsScreen(
         )
     }
 
-    // 背景样式弹窗（默认壁纸 / 相册图片 / 纯色 / 液态动态）
+    // 背景样式弹窗（相册图片 / 纯色 / 液态动态；默认壁纸已移除）
     if (showBgDialog) {
         BgStyleDialog(
             current = AppSettings.bgConfig.mode,
-            onPickDefault = {
-                AppSettings.setBackground(dialogContext, BgMode.DEFAULT)
-                showBgDialog = false
-            },
             onPickGallery = {
                 showBgDialog = false
                 bgPicker.launch("image/*")
@@ -395,30 +360,6 @@ fun SettingsScreen(
                 showColorDialog = false
             },
             onDismiss = { showColorDialog = false }
-        )
-    }
-
-    if (showClearFilesDialog) {
-        ConfirmDialog(
-            title = "清除已导入文件",
-            message = AppLocale.tf("将移除全部 {0} 个已导入的表盘文件，不影响修改记录。", state.importedFiles.size),
-            onConfirm = {
-                viewModel.clearImportedFiles()
-                showClearFilesDialog = false
-            },
-            onDismiss = { showClearFilesDialog = false }
-        )
-    }
-
-    if (showClearRecordsDialog) {
-        ConfirmDialog(
-            title = "清空修改记录",
-            message = AppLocale.tf("将删除全部 {0} 条修改记录，此操作不可恢复。", state.records.size),
-            onConfirm = {
-                viewModel.clearAllRecords(false)
-                showClearRecordsDialog = false
-            },
-            onDismiss = { showClearRecordsDialog = false }
         )
     }
 
@@ -963,7 +904,7 @@ private fun DensitySliderRow() {
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(4.dp))
-            Slider(
+            GlassSlider(
                 value = sliderValue,
                 onValueChange = { sliderValue = it },
                 onValueChangeFinished = {
@@ -972,14 +913,7 @@ private fun DensitySliderRow() {
                     (context as? Activity)?.recreate()
                 },
                 valueRange = AppSettings.DENSITY_MIN..AppSettings.DENSITY_MAX,
-                steps = 29,   // 每 1% 一档
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.White,
-                    activeTrackColor = Color.White.copy(alpha = 0.9f),
-                    inactiveTrackColor = Color.White.copy(alpha = 0.16f),
-                    activeTickColor = Color.White.copy(alpha = 0.35f),
-                    inactiveTickColor = Color.White.copy(alpha = 0.10f)
-                )
+                steps = 29   // 每 1% 一档
             )
         }
     }
@@ -1069,13 +1003,12 @@ private fun LanguageDialog(
 }
 
 // ====================================================================
-// 背景样式弹窗（默认壁纸 / 相册图片 / 纯色 / 液态动态）
+// 背景样式弹窗（相册图片 / 纯色 / 液态动态；默认壁纸已移除）
 // ====================================================================
 
 @Composable
 private fun BgStyleDialog(
     current: String,
-    onPickDefault: () -> Unit,
     onPickGallery: () -> Unit,
     onPickColor: () -> Unit,
     onPickLiquid: () -> Unit,
@@ -1101,10 +1034,9 @@ private fun BgStyleDialog(
                 )
 
                 listOf(
-                    BgOption(BgMode.DEFAULT, Icons.Default.Wallpaper, "默认壁纸", "应用内置默认背景", onPickDefault),
+                    BgOption(BgMode.LIQUID, Icons.Default.Gradient, "液态动态", "渐变光斑动态背景（默认）", onPickLiquid),
                     BgOption(BgMode.GALLERY, Icons.Default.PhotoLibrary, "从相册选择", "自定义图片，自动适配屏幕比例", onPickGallery),
-                    BgOption(BgMode.COLOR, Icons.Default.Palette, "纯色背景", "自定义颜色（深色调）", onPickColor),
-                    BgOption(BgMode.LIQUID, Icons.Default.Gradient, "液态动态", "渐变光斑动态背景", onPickLiquid)
+                    BgOption(BgMode.COLOR, Icons.Default.Palette, "纯色背景", "自定义颜色（深色调）", onPickColor)
                 ).forEach { opt ->
                     val selected = current == opt.mode
                     GlassCard(

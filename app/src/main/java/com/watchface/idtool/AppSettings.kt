@@ -25,7 +25,7 @@ object BgMode {
 
 /** 当前背景配置（mode + 颜色） */
 data class BgConfig(
-    val mode: String = BgMode.DEFAULT,
+    val mode: String = BgMode.LIQUID,
     val color: Long = 0xFF14151F
 )
 
@@ -82,7 +82,7 @@ object AppSettings {
         val p = prefs(context)
         densityFactor = p.getFloat(KEY_DENSITY, 1.0f)
         bgConfigState.value = BgConfig(
-            mode = p.getString(KEY_BG_MODE, BgMode.DEFAULT) ?: BgMode.DEFAULT,
+            mode = p.getString(KEY_BG_MODE, BgMode.LIQUID) ?: BgMode.LIQUID,
             color = p.getLong(KEY_BG_COLOR, 0xFF14151F)
         )
         announceAutoShowState.value = p.getBoolean(KEY_ANNOUNCE_AUTO, true)

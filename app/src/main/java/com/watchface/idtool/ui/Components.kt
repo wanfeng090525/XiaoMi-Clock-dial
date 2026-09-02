@@ -12,6 +12,7 @@ import android.widget.ImageView
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -32,10 +33,14 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -43,6 +48,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -68,6 +74,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -84,10 +91,13 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -95,16 +105,18 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.watchface.idtool.AppSettings
 import com.watchface.idtool.BgMode
 import com.watchface.idtool.ClickSound
-import com.watchface.idtool.R
 import java.io.File
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.runtime.mutableStateListOf
@@ -187,57 +199,62 @@ fun Modifier.glass(
 ): Modifier = this.drawBehind {
     val outline = shape.createOutline(size, layoutDirection, this)
 
-    // 1. 玻璃主体
-    drawOutline(
-        outline = outline,
-        brush = Brush.verticalGradient(
-            colors = listOf(colors.tintTop, colors.tintBottom),
-            startY = 0f,
-            endY = size.height
+    // 统一裁剪到圆角轮廓内绘制：描边/高光一律不越出圆角边界，
+    // 根治深色背景下小尺寸图标「四角白色残留 / 方形轮廓」渲染缺陷
+    //（双描边沿轮廓线居中绘制时，外侧一半会透出圆角边界叠加成残影）
+    clipPath(outline) {
+        // 1. 玻璃主体
+        drawOutline(
+            outline = outline,
+            brush = Brush.verticalGradient(
+                colors = listOf(colors.tintTop, colors.tintBottom),
+                startY = 0f,
+                endY = size.height
+            )
         )
-    )
 
-    // 2. 顶部液态光泽（厚玻璃体积感）
-    drawOutline(
-        outline = outline,
-        brush = Brush.verticalGradient(
-            colors = listOf(
-                colors.highlight.copy(alpha = colors.highlight.alpha * 0.42f * highlightAlpha),
-                Color.Transparent
-            ),
-            startY = 0f,
-            endY = size.height * 0.45f
+        // 2. 顶部液态光泽（厚玻璃体积感）
+        drawOutline(
+            outline = outline,
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    colors.highlight.copy(alpha = colors.highlight.alpha * 0.42f * highlightAlpha),
+                    Color.Transparent
+                ),
+                startY = 0f,
+                endY = size.height * 0.45f
+            )
         )
-    )
 
-    // 3. 菲涅尔顶缘亮线：顶部中段最亮、向两侧渐隐的抛光边缘
-    drawOutline(
-        outline = outline,
-        brush = Brush.horizontalGradient(
-            colors = listOf(
-                colors.rimBright.copy(alpha = 0f),
-                colors.rimBright.copy(alpha = colors.rimBright.alpha * 0.85f * borderAlpha),
-                colors.rimBright.copy(alpha = 0f)
+        // 3. 菲涅尔顶缘亮线：顶部中段最亮、向两侧渐隐的抛光边缘
+        drawOutline(
+            outline = outline,
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    colors.rimBright.copy(alpha = 0f),
+                    colors.rimBright.copy(alpha = colors.rimBright.alpha * 0.85f * borderAlpha),
+                    colors.rimBright.copy(alpha = 0f)
+                ),
+                startX = 0f,
+                endX = size.width
             ),
-            startX = 0f,
-            endX = size.width
-        ),
-        style = Stroke(width = 1.5.dp.toPx())
-    )
+            style = Stroke(width = 1.5.dp.toPx())
+        )
 
-    // 4. 非对称折射描边：左上受光、右下背光
-    drawOutline(
-        outline = outline,
-        brush = Brush.linearGradient(
-            colors = listOf(
-                colors.rimBright.copy(alpha = colors.rimBright.alpha * 0.65f * borderAlpha),
-                colors.rimDim.copy(alpha = colors.rimDim.alpha * 0.9f * borderAlpha)
+        // 4. 非对称折射描边：左上受光、右下背光
+        drawOutline(
+            outline = outline,
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    colors.rimBright.copy(alpha = colors.rimBright.alpha * 0.65f * borderAlpha),
+                    colors.rimDim.copy(alpha = colors.rimDim.alpha * 0.9f * borderAlpha)
+                ),
+                start = Offset(0f, 0f),
+                end = Offset(size.width, size.height)
             ),
-            start = Offset(0f, 0f),
-            end = Offset(size.width, size.height)
-        ),
-        style = Stroke(width = 1.dp.toPx())
-    )
+            style = Stroke(width = 1.dp.toPx())
+        )
+    }
 }
 
 /** 激活光晕：以元素中心向外扩散的圆形柔光（浅色下低透明度）。
@@ -268,6 +285,142 @@ fun Modifier.glassShadow(
     @Suppress("UNUSED_PARAMETER") elevation: Dp,
     @Suppress("UNUSED_PARAMETER") shape: Shape
 ): Modifier = this
+
+// ====================================================================
+// 液态玻璃拉条（GlassSlider · iOS 液态风格）
+//   · 玻璃渐变轨道 + 高光填充 + 圆形发光玻璃滑块
+//   · 拖动跟手、松手弹簧归位；跨档位触发点击音效（可关闭）
+// ====================================================================
+
+@Composable
+fun GlassSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    steps: Int = 0,
+    onValueChangeFinished: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    playSound: Boolean = true
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val min = valueRange.start
+    val max = valueRange.endInclusive
+    val span = (max - min).coerceAtLeast(1e-4f)
+    val intervals = steps + 1
+    val fraction = ((value - min) / span).coerceIn(0f, 1f)
+
+    var dragging by remember { mutableStateOf(false) }
+    val thumbFrac = remember { Animatable(fraction) }
+
+    // 拖动跟手；松手弹簧归位（iOS 液态手感）
+    LaunchedEffect(fraction, dragging) {
+        if (dragging) thumbFrac.snapTo(fraction)
+        else thumbFrac.animateTo(fraction, spring(dampingRatio = 0.5f, stiffness = 620f))
+    }
+    val thumbScale by animateFloatAsState(
+        targetValue = if (dragging) 1.22f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 700f),
+        label = "sliderThumbScale"
+    )
+
+    fun valueFromFraction(f: Float): Float {
+        val clamped = f.coerceIn(0f, 1f)
+        return if (steps > 0) {
+            val k = (clamped * intervals).roundToInt().coerceIn(0, intervals)
+            min + (k.toFloat() / intervals) * span
+        } else {
+            min + clamped * span
+        }
+    }
+
+    BoxWithConstraints(modifier = modifier.height(32.dp)) {
+        val trackW = with(density) { maxWidth.toPx() }
+        val thumbPx = 24.dp.toPx()
+        val thumbX = thumbFrac.value * (trackW - thumbPx)
+        val thumbCenter = thumbX + thumbPx / 2f
+        val trackH = 6.dp.toPx()
+
+        // 未激活轨道（凹槽底）
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.CenterVertically)
+                .height(6.dp)
+                .drawBehind {
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.14f),
+                        cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
+                    )
+                }
+        )
+
+        // 已激活填充（左至滑块中心的白色液态渐变 + 微光）
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterVertically)
+                .height(6.dp)
+                .width(with(density) { thumbCenter.toDp() })
+                .drawBehind {
+                    drawRoundRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.88f),
+                                Color.White.copy(alpha = 0.55f)
+                            )
+                        ),
+                        cornerRadius = CornerRadius(trackH / 2f, trackH / 2f)
+                    )
+                }
+        )
+
+        // 圆形玻璃滑块（按压放大 + 光晕 + 中心白核）
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterVertically)
+                .size(24.dp)
+                .offset { IntOffset(thumbX.roundToInt(), 0) }
+                .graphicsLayer {
+                    scaleX = thumbScale
+                    scaleY = thumbScale
+                }
+                .glow(
+                    Color.White.copy(alpha = if (dragging) 0.34f else 0.20f),
+                    radiusFraction = 1.7f
+                )
+                .glass(CircleShape, rememberGlassColors())
+                .drawBehind {
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.92f),
+                        radius = size.minDimension * 0.32f,
+                        center = this.center
+                    )
+                }
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val downF = (down.position.x / trackW.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                        onValueChange(valueFromFraction(downF))
+                        if (playSound && AppSettings.soundEnabled) ClickSound.play(context)
+                        dragging = true
+                        var lastTick = (downF * intervals).roundToInt()
+                        drag(down.id) { change ->
+                            change.consume()
+                            val f = (change.position.x / trackW.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                            val tick = (f * intervals).roundToInt()
+                            if (playSound && steps > 0 && tick != lastTick) {
+                                lastTick = tick
+                                ClickSound.play(context)
+                            }
+                            onValueChange(valueFromFraction(f))
+                        }
+                        dragging = false
+                        onValueChangeFinished?.invoke()
+                    }
+                }
+        )
+    }
+}
 
 /** 主按钮微光扫过：一道高光带周期性从左至右掠过 */
 @Composable
@@ -707,12 +860,12 @@ fun LiquidBackground(modifier: Modifier = Modifier) {
 // ====================================================================
 // 应用背景（AppBackground · 可自定义）
 //
-// 四种模式（设置页可切换，默认内置壁纸）：
-//   DEFAULT  内置默认壁纸 + 压暗蒙版（保证玻璃界面可读性）
+// 四种模式（设置页可切换，默认液态动态背景）：
+//   LIQUID   液态动态背景（游戏级渐变 + 光斑）· 应用默认
 //   GALLERY  相册自定义图片（复制到私有目录，IO 线程解码）
 //   COLOR    纯色背景 + 暗角 + 胶片颗粒
-//   LIQUID   液态动态背景（游戏级渐变 + 光斑）
 //
+// 原内置「默认壁纸」已按需求移除，default_wallpaper.jpg 一并删除。
 // 图片一律 ContentScale.Crop：保持原比例居中裁剪铺满屏幕，
 // 任意屏幕比例（16:9 / 18:9 / 折叠屏 / 平板）均无拉伸变形。
 // ====================================================================
@@ -758,13 +911,8 @@ fun AppBackground(modifier: Modifier = Modifier) {
         }
 
         else -> {
-            Image(
-                painter = painterResource(R.drawable.default_wallpaper),
-                contentDescription = null,
-                modifier = modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-            PhotoScrim(modifier)
+            // 原「默认壁纸」已移除，历史遗留 DEFAULT / 未知模式统一兜底为液态动态
+            LiquidBackground(modifier)
         }
     }
 }
@@ -1538,6 +1686,9 @@ fun GlowDot(color: Color, modifier: Modifier = Modifier, dotSize: Dp = 8.dp) {
 
 data class GlassNavTab(val icon: ImageVector, val label: String)
 
+/** Dock 内部：单个 Tab 的位置/宽度，用于滑动指示条测量 */
+private data class TabMetrics(val left: Int, val width: Int)
+
 @Composable
 fun GlassNavBar(
     tabs: List<GlassNavTab>,
@@ -1548,101 +1699,130 @@ fun GlassNavBar(
     val navContext = LocalContext.current
     // -1 = 无选中（当前页由卫星按钮承载，如设置页）
     val safeIndex = if (selected in tabs.indices) selected else -1
+    val density = LocalDensity.current
 
-    Row(
+    // 各 Tab 位置（onGloballyPositioned 采集；坐标基于内容区，指示条同处内容区故直接对齐）
+    var tabMetrics by remember { mutableStateOf(List<TabMetrics?>(tabs.size) { null }) }
+    // 滑动指示条的横向偏移与宽度动画（弹簧驱动）
+    val indicatorX = remember { Animatable(0f) }
+    val indicatorW = remember { Animatable(0f) }
+
+    // 选中项变化 → 指示条弹簧滑到目标 Tab（Dock 切换动画优化）
+    LaunchedEffect(safeIndex, tabMetrics) {
+        val m = tabMetrics.getOrNull(safeIndex) ?: return@LaunchedEffect
+        coroutineScope {
+            launch { indicatorX.animateTo(m.left.toFloat(), spring(dampingRatio = 0.66f, stiffness = 540f)) }
+            launch { indicatorW.animateTo(m.width.toFloat(), spring(dampingRatio = 0.66f, stiffness = 540f)) }
+        }
+    }
+
+    Box(
         modifier = modifier
-            .animateContentSize(
-                animationSpec = spring(dampingRatio = 0.8f, stiffness = 400f)
-            )
             .glass(RoundedCornerShape(50), rememberGlassColors())
-            .padding(horizontal = 7.dp, vertical = 7.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 7.dp, vertical = 7.dp)
     ) {
-        tabs.forEachIndexed { index, tab ->
-            val isSelected = index == safeIndex
-            val contentColor by animateColorAsState(
-                targetValue = if (isSelected) Color(0xFFF3F5FA)
-                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                animationSpec = tween(240),
-                label = "navColor$index"
-            )
-            val iconScale by animateFloatAsState(
-                targetValue = if (isSelected) 1f else 0.4f,
-                animationSpec = spring(dampingRatio = 0.45f, stiffness = 700f),
-                label = "navIcon$index"
-            )
-            val interaction = remember { MutableInteractionSource() }
-
+        // 滑动高亮指示条：垫底绘制，随选中切换弹簧滑动
+        if (safeIndex in tabs.indices) {
             Box(
                 modifier = Modifier
+                    .offset { IntOffset(indicatorX.value.roundToInt(), 0) }
+                    .width(with(density) { indicatorW.value.toDp() })
                     .height(38.dp)
-                    .then(
-                        if (isSelected) Modifier
-                            .glow(Color.White.copy(alpha = 0.20f), radiusFraction = 1.7f)
-                            .glass(
-                                RoundedCornerShape(19.dp),
-                                GlassColors(
-                                    // 提亮玻璃规格：半透明白玻璃 + 亮边环 + 浅色内容（与 Primary 按钮同语言）
-                                    tintTop = Color.White.copy(alpha = 0.24f),
-                                    tintBottom = Color.White.copy(alpha = 0.10f),
-                                    highlight = Color.White.copy(alpha = 0.40f),
-                                    rimBright = Color.White.copy(alpha = 0.78f),
-                                    rimDim = Color.Black.copy(alpha = 0.12f)
-                                )
-                            ) else Modifier
-                    )
-                    .pressRipple(
-                        interaction,
-                        clipShape = RoundedCornerShape(19.dp),
-                        color = if (isSelected) Color.White else Color.White,
-                        intensity = 1.1f
-                    )
-                    .clickable(interactionSource = interaction, indication = null) {
-                        if (!isSelected) {
-                            if (AppSettings.soundEnabled) {
-                                ClickSound.play(navContext)
-                            }
-                            onSelect(index)
-                        }
-                    }
-                    .padding(horizontal = if (isSelected) 15.dp else 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 图标：仅选中时展开（宽度 + 缩放双重动画）
-                    AnimatedVisibility(
-                        visible = isSelected,
-                        enter = fadeIn(tween(200)) + expandHorizontally(
-                            animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f)
-                        ),
-                        exit = fadeOut(tween(150)) + shrinkHorizontally(
-                            animationSpec = tween(180)
+                    .glow(Color.White.copy(alpha = 0.18f), radiusFraction = 1.7f)
+                    .glass(
+                        RoundedCornerShape(19.dp),
+                        GlassColors(
+                            // 提亮玻璃规格：半透明白玻璃 + 亮边环 + 浅色内容（与原选中态一致）
+                            tintTop = Color.White.copy(alpha = 0.24f),
+                            tintBottom = Color.White.copy(alpha = 0.10f),
+                            highlight = Color.White.copy(alpha = 0.40f),
+                            rimBright = Color.White.copy(alpha = 0.78f),
+                            rimDim = Color.Black.copy(alpha = 0.12f)
                         )
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                tab.icon,
-                                contentDescription = tab.label,
-                                tint = contentColor,
-                                modifier = Modifier
-                                    .size(17.dp)
-                                    .graphicsLayer {
-                                        scaleX = iconScale
-                                        scaleY = iconScale
-                                    }
-                            )
-                            Spacer(Modifier.width(6.dp))
-                        }
-                    }
-                    Text(
-                        text = tab.label,
-                        fontSize = 13.sp,
-                        fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Medium,
-                        letterSpacing = 0.2.sp,
-                        color = contentColor,
-                        maxLines = 1
                     )
+            )
+        }
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            tabs.forEachIndexed { index, tab ->
+                val isSelected = index == safeIndex
+                val contentColor by animateColorAsState(
+                    targetValue = if (isSelected) Color(0xFFF3F5FA)
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                    animationSpec = tween(240),
+                    label = "navColor$index"
+                )
+                val iconScale by animateFloatAsState(
+                    targetValue = if (isSelected) 1f else 0.4f,
+                    animationSpec = spring(dampingRatio = 0.45f, stiffness = 700f),
+                    label = "navIcon$index"
+                )
+                val interaction = remember { MutableInteractionSource() }
+
+                Box(
+                    modifier = Modifier
+                        .height(38.dp)
+                        .onGloballyPositioned { coords ->
+                            val m = TabMetrics(coords.positionInParent().x.roundToInt(), coords.size.width)
+                            if (tabMetrics[index] != m) {
+                                tabMetrics = tabMetrics.toMutableList().also { it[index] = m }
+                            }
+                        }
+                        .pressRipple(
+                            interaction,
+                            clipShape = RoundedCornerShape(19.dp),
+                            color = Color.White,
+                            intensity = 1.1f
+                        )
+                        .clickable(interactionSource = interaction, indication = null) {
+                            if (!isSelected) {
+                                if (AppSettings.soundEnabled) {
+                                    ClickSound.play(navContext)
+                                }
+                                onSelect(index)
+                            }
+                        }
+                        .padding(horizontal = if (isSelected) 15.dp else 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // 图标：仅选中时展开（宽度 + 缩放双重动画）
+                        AnimatedVisibility(
+                            visible = isSelected,
+                            enter = fadeIn(tween(200)) + expandHorizontally(
+                                animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f)
+                            ),
+                            exit = fadeOut(tween(150)) + shrinkHorizontally(
+                                animationSpec = tween(180)
+                            )
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    tab.icon,
+                                    contentDescription = tab.label,
+                                    tint = contentColor,
+                                    modifier = Modifier
+                                        .size(17.dp)
+                                        .graphicsLayer {
+                                            scaleX = iconScale
+                                            scaleY = iconScale
+                                        }
+                                )
+                                Spacer(Modifier.width(6.dp))
+                            }
+                        }
+                        Text(
+                            text = tab.label,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            letterSpacing = 0.2.sp,
+                            color = contentColor,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
         }
