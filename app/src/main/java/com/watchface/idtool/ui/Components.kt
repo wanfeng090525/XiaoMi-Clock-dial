@@ -38,10 +38,11 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -224,16 +225,22 @@ fun Modifier.glass(
     val blur = if (hazeState != null && blurRadius.value > 0f) {
         Modifier
             .clip(shape)
-            .hazeEffect(state = hazeState) {
-                blurEffect {
-                    this.blurRadius = blurRadius
-                    colorEffects = listOf(
-                        HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
-                        HazeColorEffect.tint(Color.White.copy(alpha = 0.035f))
+            // Haze 2.0.0-rc01 契约：模糊入口是 hazeBlur(input, style)，
+            // 所有模糊属性（blurRadius / colorEffects / noiseFactor）都写在
+            // HazeBlurStyle { } 作用域里，且 blurRadius 是函数而非属性。
+            .hazeBlur(
+                input = HazeInput.Sources(hazeState),
+                style = HazeBlurStyle {
+                    blurRadius(blurRadius)
+                    noiseFactor(GlassNoiseFactor)
+                    colorEffects(
+                        listOf(
+                            HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
+                            HazeColorEffect.tint(Color.White.copy(alpha = 0.035f))
+                        )
                     )
-                    noiseFactor = GlassNoiseFactor
                 }
-            }
+            )
     } else {
         Modifier
     }
@@ -1760,13 +1767,16 @@ fun GlassChip(
                 if (hazeState != null) {
                     Modifier
                         .clip(shape)
-                        .hazeEffect(state = hazeState) {
-                            blurEffect {
-                                blurRadius = 14.dp
-                                colorEffects = listOf(HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)))
-                                noiseFactor = 0.03f
+                        .hazeBlur(
+                            input = HazeInput.Sources(hazeState),
+                            style = HazeBlurStyle {
+                                blurRadius(14.dp)
+                                colorEffects(
+                                    listOf(HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)))
+                                )
+                                noiseFactor(0.03f)
                             }
-                        }
+                        )
                 } else Modifier
             )
             .drawBehind {
@@ -1892,22 +1902,25 @@ fun GlassNavBar(
         modifier = modifier
             .then(
                 if (hazeState != null) {
-                    // 真实背光模糊（Haze 2.0 rc 契约）：先硬裁到胶囊形状，
-                    // 再用 hazeEffect + blurEffect{} 磨砂——2.0 起所有模糊相关
-                    // 属性（blurRadius/colorEffects/noiseFactor）必须包在
-                    // blurEffect{} 内，不能再像 1.x 那样直接摆在外层 lambda。
+                    // 真实背光模糊（Haze 2.0.0-rc01 契约）：先硬裁到胶囊形状，
+                    // 再用 hazeBlur(input, style) 磨砂——rc01 里模糊入口是
+                    // hazeBlur，所有属性（blurRadius/colorEffects/noiseFactor）
+                    // 写在 HazeBlurStyle { } 作用域中，且都是函数调用而非属性赋值。
                     Modifier
                         .clip(navShape)
-                        .hazeEffect(state = hazeState) {
-                            blurEffect {
-                                blurRadius = 18.dp
-                                colorEffects = listOf(
-                                    HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
-                                    HazeColorEffect.tint(Color.White.copy(alpha = 0.03f))
+                        .hazeBlur(
+                            input = HazeInput.Sources(hazeState),
+                            style = HazeBlurStyle {
+                                blurRadius(18.dp)
+                                colorEffects(
+                                    listOf(
+                                        HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
+                                        HazeColorEffect.tint(Color.White.copy(alpha = 0.03f))
+                                    )
                                 )
-                                noiseFactor = 0.035f
+                                noiseFactor(0.035f)
                             }
-                        }
+                        )
                 } else Modifier
             )
             .glass(navShape, rememberGlassColors())
@@ -2073,16 +2086,19 @@ fun GlassFabButton(
                 if (hazeState != null) {
                     Modifier
                         .clip(CircleShape)
-                        .hazeEffect(state = hazeState) {
-                            blurEffect {
-                                blurRadius = 18.dp
-                                colorEffects = listOf(
-                                    HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
-                                    HazeColorEffect.tint(Color.White.copy(alpha = 0.03f))
+                        .hazeBlur(
+                            input = HazeInput.Sources(hazeState),
+                            style = HazeBlurStyle {
+                                blurRadius(18.dp)
+                                colorEffects(
+                                    listOf(
+                                        HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
+                                        HazeColorEffect.tint(Color.White.copy(alpha = 0.03f))
+                                    )
                                 )
-                                noiseFactor = 0.035f
+                                noiseFactor(0.035f)
                             }
-                        }
+                        )
                 } else Modifier
             )
             .glow(
