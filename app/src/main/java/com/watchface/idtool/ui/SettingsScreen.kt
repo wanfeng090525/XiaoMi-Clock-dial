@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,9 +31,8 @@ import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Gradient
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Notifications
@@ -94,7 +92,6 @@ fun SettingsScreen(
     viewModel: MainViewModel,
     state: UiState
 ) {
-    var showLangDialog by remember { mutableStateOf(false) }
     var showBgDialog by remember { mutableStateOf(false) }
     var showColorDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -168,17 +165,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(10.dp))
         StaggeredItem(index = 4) {
             val context = LocalContext.current
-            val savedLang = AppLocale.savedLang
-            val langNative = AppLocale.LOCALES.firstOrNull { it.code == savedLang }?.native ?: "简体中文"
             GlassCard(contentPadding = 6.dp) {
-                SettingsRow(
-                    icon = Icons.Default.Language,
-                    iconTint = MaterialTheme.colorScheme.primary,
-                    title = "语言",
-                    subtitle = langNative,
-                    onClick = { showLangDialog = true }
-                )
-                SettingsDivider()
                 // 显示密度拉条：80% ~ 110%，实时百分比
                 DensitySliderRow()
                 SettingsDivider()
@@ -360,16 +347,6 @@ fun SettingsScreen(
 
     // ============ 弹窗 ============
     val dialogContext = LocalContext.current
-    if (showLangDialog) {
-        LanguageDialog(
-            current = AppLocale.savedLang,
-            onSelect = { code ->
-                AppSettings.setLanguage(dialogContext, code)
-                showLangDialog = false
-            },
-            onDismiss = { showLangDialog = false }
-        )
-    }
 
     // 背景样式弹窗（相册图片 / 纯色 / 液态动态；默认壁纸已移除）
     if (showBgDialog) {
@@ -957,89 +934,6 @@ private fun DensitySliderRow() {
                 valueRange = AppSettings.DENSITY_MIN..AppSettings.DENSITY_MAX,
                 steps = 29   // 每 1% 一档
             )
-        }
-    }
-}
-
-// ====================================================================
-// 语言选择弹窗
-// ====================================================================
-
-@Composable
-private fun LanguageDialog(
-    current: String,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    Dialog(onDismissRequest = onDismiss) {
-        DialogEntranceWrapper {
-            GlassCard(shape = RoundedCornerShape(28.dp), contentPadding = 18.dp) {
-                Text(
-                    text = "语言",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "LANGUAGE",
-                    fontSize = 9.sp,
-                    letterSpacing = 1.6.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(12.dp))
-                // 22 种语言：原生名 + 当前语言说明，纵向滚动选择
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 420.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    AppLocale.LOCALES.forEachIndexed { index, locale ->
-                        val selected = current == locale.code
-                        GlassCard(
-                            onClick = { onSelect(locale.code) },
-                            shape = RoundedCornerShape(18.dp),
-                            contentPadding = 13.dp,
-                            haptic = false
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = locale.native,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = if (selected) Color.White
-                                        else MaterialTheme.colorScheme.onSurface
-                                    )
-                                    if (locale.zhDesc != locale.native) {
-                                        Spacer(Modifier.height(1.dp))
-                                        Text(
-                                            text = locale.zhDesc,
-                                            fontSize = 10.5.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                                if (selected) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = Color(0xFFE9EBF4),
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                        }
-                        if (index < AppLocale.LOCALES.lastIndex) {
-                            Spacer(Modifier.height(8.dp))
-                        }
-                    }
-                }
-            }
         }
     }
 }

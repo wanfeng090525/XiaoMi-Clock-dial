@@ -30,18 +30,18 @@ data class BgConfig(
 /**
  * 应用设置（SharedPreferences 持久化）
  *
- * · language           界面语言（22 种，"system" 跟随系统）
  * · densityFactor      显示密度缩放（DPI），拉条 80% ~ 110% 连续调节
  * · bgMode/bgColor     背景样式（默认壁纸 / 相册图片·含动图 / 纯色 / 液态动态）
  * · announceAutoShow   启动时自动弹出新公告（开关，默认开）
  * · soundEnabled       点击音效（开关，默认开）
  * · vibrationEnabled   震动反馈（开关，默认开；独立于音效，可分别设置）
  * · snowEnabled        雪花飘落特效（开关，默认开）
+ *
+ * 界面语言固定为简体中文，不提供语言切换（AppLocale 强制 zh）。
  */
 object AppSettings {
     private const val PREFS = "app_settings"
 
-    private const val KEY_LANG = "language"
     private const val KEY_DENSITY = "density_factor"
     private const val KEY_BG_MODE = "bg_mode"
     private const val KEY_BG_COLOR = "bg_color"
@@ -81,7 +81,7 @@ object AppSettings {
     fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    /** 启动时加载（语言由 Compose 侧读取） */
+    /** 启动时加载（界面语言固定为简体中文） */
     fun load(context: Context) {
         val p = prefs(context)
         densityFactor = p.getFloat(KEY_DENSITY, 1.0f)
@@ -93,16 +93,8 @@ object AppSettings {
         soundEnabledState.value = p.getBoolean(KEY_SOUND, true)
         vibrationEnabledState.value = p.getBoolean(KEY_VIBRATION, true)
         snowEnabledState.value = p.getBoolean(KEY_SNOW, true)
-        com.watchface.idtool.ui.AppLocale.apply(p.getString(KEY_LANG, "zh") ?: "zh")
-    }
-
-    // ---------- 语言 ----------
-    fun getLanguage(context: Context): String =
-        prefs(context).getString(KEY_LANG, "zh") ?: "zh"
-
-    fun setLanguage(context: Context, code: String) {
-        prefs(context).edit().putString(KEY_LANG, code).apply()
-        com.watchface.idtool.ui.AppLocale.apply(code)
+        // 仅保留中文：忽略历史语言设置，强制简体中文
+        com.watchface.idtool.ui.AppLocale.apply("zh")
     }
 
     // ---------- 密度 ----------
