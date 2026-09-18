@@ -29,5 +29,7 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+# 注意：AGP 9.0 起 Kotlin 由 AGP 内建，`kotlin-android` 插件已不可用，
+# 因此这里不再声明它。kotlin 版本仅供 Compose 编译器插件使用；
+# 真正驱动编译的 KGP 版本通过根 build.gradle.kts 的 buildscript classpath 覆盖。
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

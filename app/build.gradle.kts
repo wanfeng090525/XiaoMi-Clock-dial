@@ -3,7 +3,10 @@ import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    // 注意：AGP 9.0 起 Kotlin 支持已内建，不能再 apply 'org.jetbrains.kotlin.android'
+    // （否则报 "The 'org.jetbrains.kotlin.android' plugin is no longer required for
+    //  Kotlin support since AGP 9.0"）。
+    // Compose 编译器插件仍然需要单独 apply。
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
@@ -56,15 +59,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    // Kotlin 2.4 已移除 kotlinOptions，改用 compilerOptions（AGP 8.13 两者都还认，
-    // 但旧写法会打 deprecation 警告，部分配置下直接报错）。
-    kotlin {
-        compilerOptions {
-            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
-            freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn")
-        }
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
@@ -80,6 +74,15 @@ android {
     lint {
         abortOnError = false
         checkReleaseBuilds = false
+    }
+}
+
+// AGP 9.0 起 Kotlin 由 AGP 内建，kotlin { } 块提升到顶层。
+// kotlinOptions 在 Kotlin 2.4 已移除，统一用 compilerOptions。
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+        freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn")
     }
 }
 
