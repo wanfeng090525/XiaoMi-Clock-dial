@@ -64,8 +64,6 @@ import com.watchface.idtool.ui.SnowfallLayer
 import com.watchface.idtool.ui.ToastMessage
 import com.watchface.idtool.ui.WatchFaceTheme
 import com.watchface.idtool.ui.WelcomeScreen
-import dev.chrisbanes.haze.hazeSource
-import dev.chrisbanes.haze.rememberHazeState
 
 class MainActivity : ComponentActivity() {
 
@@ -199,11 +197,6 @@ private fun AppContent() {
         currentPage = page
     }
 
-    // 液态玻璃真实背光模糊：这一个 HazeState 被下面的页面内容区标记为
-    // "模糊来源"，导航栏/设置圆钮再引用它，就能让胶囊背后真正滚动的
-    // 内容产生磨砂虚化，而不再是纯靠渐变模拟的假玻璃。
-    val hazeState = rememberHazeState()
-
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
@@ -220,12 +213,7 @@ private fun AppContent() {
                 .imePadding()
         ) {
             // 页面内容：方向感知的滑动 + 淡入淡出转场
-            // .hazeSource 把这一层实际绘制的内容（列表滚动等）登记为
-            // 模糊来源，供下方导航栏/设置圆钮做背光模糊。
             AnimatedContent(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .hazeSource(hazeState),
                 targetState = currentPage,
                 transitionSpec = {
                     val from = PAGES.indexOf(initialState).coerceAtLeast(0)
@@ -282,16 +270,14 @@ private fun AppContent() {
                         GlassNavTab(Icons.Default.History, "记录")
                     ),
                     selected = NAV_TABS.indexOf(currentPage),
-                    onSelect = { index -> switchPage(NAV_TABS[index]) },
-                    hazeState = hazeState
+                    onSelect = { index -> switchPage(NAV_TABS[index]) }
                 )
                 Spacer(Modifier.width(12.dp))
                 GlassFabButton(
                     icon = Icons.Default.Settings,
                     contentDescription = "设置",
                     selected = currentPage == "settings",
-                    onClick = { switchPage("settings") },
-                    hazeState = hazeState
+                    onClick = { switchPage("settings") }
                 )
             }
 
