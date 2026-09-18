@@ -300,9 +300,13 @@ object SagAuthManager {
                 v.heartbeat(kami, getMachineCode(context), currentToken)
             }
             if (r.success) {
+                // 心跳验证通过：恢复登录态并重启心跳，否则 UI 仍显示未登录
+                setLoginState(true)
+                startHeartbeat(context)
                 endTime = formatEndTime(r.endTime)
                 if (r.timetypeName?.isNotEmpty() == true) cardTypeName = r.timetypeName
                 if (r.onlinenum?.isNotEmpty() == true) onlineNum = r.onlinenum
+                lastError = ""
                 ok = true
             }
         }
