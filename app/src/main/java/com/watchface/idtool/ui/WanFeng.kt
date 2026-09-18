@@ -67,14 +67,22 @@ import com.watchface.idtool.SoundType
  */
 object WanFeng {
 
-    /** 多页面菜单（对应 Lua 版 wanfeng.menu：顶部页签 + 单页内容） */
+    /**
+     * 多页面菜单（对应 Lua 版 wanfeng.menu：顶部页签 + 单页内容）
+     *
+     * 默认在内部管理当前页签；如需从页面内容里跳页（如首页选择文件后跳到“修改”），
+     * 可传入 [pageIndex] / [onPageChange] 由外部控制当前页。
+     */
     @Composable
     fun Menu(
         pages: List<Page>,
-        modifier: Modifier = Modifier
+        modifier: Modifier = Modifier,
+        pageIndex: Int? = null,
+        onPageChange: ((Int) -> Unit)? = null
     ) {
         val context = LocalContext.current
-        var pageIndex by rememberSaveable { mutableIntStateOf(0) }
+        val internalIndex = rememberSaveable { mutableIntStateOf(0) }
+        val currentIndex = pageIndex ?: internalIndex.intValue
         Column(modifier = modifier) {
             // 顶部页签（玻璃分段控制条）
             Row(
@@ -82,7 +90,7 @@ object WanFeng {
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 pages.forEachIndexed { i, page ->
-                    val selected = i == pageIndex
+                    val selected = i == currentIndex
                     Text(
                         text = page.title,
                         fontSize = 12.sp,
@@ -100,7 +108,11 @@ object WanFeng {
                                 if (AppSettings.soundEnabled) {
                                     ClickSound.play(context, SoundType.TOGGLE)
                                 }
-                                pageIndex = i
+                                if (pageIndex != null) {
+                                    onPageChange?.invoke(i)
+                                } else {
+                                    internalIndex.intValue = i
+                                }
                             }
                             .padding(vertical = 10.dp)
                             .fillMaxWidth()
@@ -110,7 +122,7 @@ object WanFeng {
             Spacer(Modifier.height(14.dp))
             // 当前页内容（切换带轻量滑动过渡）
             AnimatedContent(
-                targetState = pageIndex,
+                targetState = currentIndex,
                 transitionSpec = {
                     (fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it / 8 })
                         .togetherWith(fadeOut(tween(140)))

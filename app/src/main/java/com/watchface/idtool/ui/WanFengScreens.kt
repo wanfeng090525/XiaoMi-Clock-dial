@@ -4136,3 +4136,58 @@ private fun ColorPickerDialog(
 // 显示密度选择弹窗（已由内联拉条 WanFeng.Seek 取代）
 // ====================================================================
 
+// ====================================================================
+// 主菜单：四个界面集成在一个界面（对齐 Lua 版 wanfeng.menu 顶部页签写法）
+//   主页 / 修改 / 记录 / 设置 —— 每页内容保持原有布局与样式不变，
+//   页签切换由 MainActivity 的 pageIndex 控制（返回键回主页、进记录页刷新）。
+// ====================================================================
+@Composable
+fun MainMenuScreen(
+    viewModel: MainViewModel,
+    state: UiState,
+    pageIndex: Int,
+    onPageChange: (Int) -> Unit
+) {
+    WanFeng.Menu(
+        modifier = Modifier.fillMaxSize(),
+        pages = listOf(
+            // ---- 主页：快捷操作 / 权限状态 / 密钥提取 / 已导入文件 ----
+            WanFeng.Page("主页") {
+                WelcomeScreen(
+                    viewModel = viewModel,
+                    state = state,
+                    onNavigateToModify = { onPageChange(1) },
+                    onNavigateToHistory = { onPageChange(2) }
+                )
+            },
+
+            // ---- 修改：文件信息 / 新 ID / 名称 / 保存导出 ----
+            WanFeng.Page("修改") {
+                ModifyScreen(
+                    viewModel = viewModel,
+                    state = state,
+                    onNavigateToHistory = { onPageChange(2) }
+                )
+            },
+
+            // ---- 记录：修改记录列表 ----
+            WanFeng.Page("记录") {
+                HistoryScreen(
+                    viewModel = viewModel,
+                    state = state
+                )
+            },
+
+            // ---- 设置：WanFeng.Menu 子页签（账号/权限/界面/外观/更新/关于） ----
+            WanFeng.Page("设置") {
+                SettingsScreen(
+                    viewModel = viewModel,
+                    state = state
+                )
+            }
+        ),
+        pageIndex = pageIndex,
+        onPageChange = onPageChange
+    )
+}
+
