@@ -66,6 +66,20 @@ jobs:
           if-no-files-found: warn
           compression-level: 9
 
+      # 失败时把错误摘要发到 Release 正文。
+      # 原因：Actions 的 job logs / artifacts 下载接口在部分网络环境下会被
+      # 第三方代理拦截（403），而 Release 元数据可以正常读取。
+      - name: 失败时把错误摘要发布到 Release
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="errlog-${{ github.run_number }}"
+          gh release create "$TAG" \
+            --title "构建错误日志 #${{ github.run_number }}" \
+            --notes-file build-error-summary.txt 2>/dev/null \
+          || gh release edit "$TAG" --notes-file build-error-summary.txt
+
       - name: 若构建失败则中止后续步骤
         if: steps.gradle_build.outputs.exit_code != '0'
         run: |
