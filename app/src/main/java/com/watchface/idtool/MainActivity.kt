@@ -14,30 +14,56 @@ import androidx.activity.SystemBarStyle
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlin.math.roundToInt
 import com.watchface.idtool.ui.AppBackground
+import com.watchface.idtool.ui.GlassFabButton
+import com.watchface.idtool.ui.GlassNavTab
+import com.watchface.idtool.ui.GlassNavBar
 import com.watchface.idtool.ui.GlobalRippleOverlay
+import com.watchface.idtool.ui.HistoryScreen
 import com.watchface.idtool.ui.LoadingOverlay
-import com.watchface.idtool.ui.MainMenuScreen
+import com.watchface.idtool.ui.ModifyScreen
 import com.watchface.idtool.ui.ResultDialog
+import com.watchface.idtool.ui.SettingsScreen
 import com.watchface.idtool.ui.SnowfallLayer
 import com.watchface.idtool.ui.ToastMessage
 import com.watchface.idtool.ui.WatchFaceTheme
+import com.watchface.idtool.ui.WelcomeScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -118,12 +144,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/** 页面顺序（用于方向感知的转场动画）；settings 为分离卫星按钮入口 */
+private val PAGES = listOf("home", "modify", "history", "settings")
+private val NAV_TABS = listOf("home", "modify", "history")
+
 @Composable
 private fun AppContent() {
     val viewModel: MainViewModel = viewModel()
     val state by viewModel.uiState.collectAsState()
-    // 0=主页 1=修改 2=记录 3=设置：四个界面集成在一个顶部页签菜单里（对应 Lua wanfeng.menu）
-    var currentPage by remember { mutableIntStateOf(0) }
+    var currentPage by remember { mutableStateOf("home") }
     val context = LocalContext.current
 
     // 恢复本地卡密登录态：首次启动后台异步验证，完成后自动登录
@@ -147,11 +176,11 @@ private fun AppContent() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // 返回键：非主页先回主页；主页双击退出
+    // 返回键：子页面先回主页；主页双击退出
     var lastBackAt by remember { mutableLongStateOf(0L) }
     BackHandler {
-        if (currentPage != 0) {
-            currentPage = 0
+        if (currentPage != "home") {
+            currentPage = "home"
         } else {
             val now = System.currentTimeMillis()
             if (now - lastBackAt < 2000L) {
@@ -163,9 +192,9 @@ private fun AppContent() {
         }
     }
 
-    fun switchPage(index: Int) {
-        if (index == 2) viewModel.loadRecords()
-        currentPage = index
+    fun switchPage(page: String) {
+        if (page == "history") viewModel.loadRecords()
+        currentPage = page
     }
 
     Box(
@@ -183,13 +212,74 @@ private fun AppContent() {
                 .navigationBarsPadding()
                 .imePadding()
         ) {
-            // 四个界面集成在一个界面：顶部页签（主页/修改/记录/设置）
-            MainMenuScreen(
-                viewModel = viewModel,
-                state = state,
-                pageIndex = currentPage,
-                onPageChange = { switchPage(it) }
-            )
+            // 页面内容：方向感知的滑动 + 淡入淡出转场
+            AnimatedContent(
+                targetState = currentPage,
+                transitionSpec = {
+                    val from = PAGES.indexOf(initialState).coerceAtLeast(0)
+                    val to = PAGES.indexOf(targetState).coerceAtLeast(0)
+                    val forward = to >= from
+                    val enter = fadeIn(tween(320, easing = FastOutSlowInEasing)) +
+                            slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) {
+                                if (forward) it / 4 else -it / 4
+                            }
+                    val exit = fadeOut(tween(200)) +
+                            slideOutHorizontally(tween(300, easing = FastOutSlowInEasing)) {
+                                if (forward) -it / 5 else it / 5
+                            }
+                    enter togetherWith exit
+                },
+                label = "pageTransition"
+            ) { page ->
+                Box(modifier = Modifier.fillMaxSize()) {
+                    when (page) {
+                        "home" -> WelcomeScreen(
+                            viewModel = viewModel,
+                            state = state,
+                            onNavigateToModify = { currentPage = "modify" },
+                            onNavigateToHistory = { switchPage("history") }
+                        )
+                        "modify" -> ModifyScreen(
+                            viewModel = viewModel,
+                            state = state,
+                            onNavigateToHistory = { switchPage("history") }
+                        )
+                        "history" -> HistoryScreen(
+                            viewModel = viewModel,
+                            state = state
+                        )
+                        "settings" -> SettingsScreen(
+                            viewModel = viewModel,
+                            state = state
+                        )
+                    }
+                }
+            }
+
+            // L2 悬浮玻璃导航：主胶囊 + 分离式设置圆钮（参考图"+"钮形态）
+            Row(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                GlassNavBar(
+                    tabs = listOf(
+                        GlassNavTab(Icons.Default.Home, "主页"),
+                        GlassNavTab(Icons.Default.Build, "修改"),
+                        GlassNavTab(Icons.Default.History, "记录")
+                    ),
+                    selected = NAV_TABS.indexOf(currentPage),
+                    onSelect = { index -> switchPage(NAV_TABS[index]) }
+                )
+                Spacer(Modifier.width(12.dp))
+                GlassFabButton(
+                    icon = Icons.Default.Settings,
+                    contentDescription = "设置",
+                    selected = currentPage == "settings",
+                    onClick = { switchPage("settings") }
+                )
+            }
 
             if (isRestoring || state.isLoading) {
                 LoadingOverlay(if (isRestoring) "正在验证会话…" else state.loadingText)
