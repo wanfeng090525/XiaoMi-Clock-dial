@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.AspectRatio
@@ -47,8 +46,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -58,7 +55,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -139,7 +135,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(20.dp))
 
         // ============ 卡密登录状态 ============
-        StaggeredItem(index = 1) { SectionLabel("卡密登录") }
+        StaggeredItem(index = 1) { WanFeng.Section("卡密登录") }
         Spacer(Modifier.height(10.dp))
         StaggeredItem(index = 2) {
             LoginStatusSection()
@@ -148,7 +144,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(22.dp))
 
         // ============ 权限管理 ============
-        StaggeredItem(index = 3) { SectionLabel("权限管理") }
+        StaggeredItem(index = 3) { WanFeng.Section("权限管理") }
         Spacer(Modifier.height(10.dp))
         StaggeredItem(index = 4) {
             PermissionSection(
@@ -161,24 +157,41 @@ fun SettingsScreen(
         Spacer(Modifier.height(22.dp))
 
         // ============ 界面与语言 ============
-        StaggeredItem(index = 5) { SectionLabel("界面与语言") }
+        StaggeredItem(index = 5) { WanFeng.Section("界面与语言") }
         Spacer(Modifier.height(10.dp))
         StaggeredItem(index = 4) {
             val context = LocalContext.current
-            GlassCard(contentPadding = 6.dp) {
+            WanFeng.Group {
                 // 显示密度拉条：80% ~ 110%，实时百分比
-                DensitySliderRow()
-                SettingsDivider()
-                SettingsSwitchRow(
+                var sliderValue by remember(AppSettings.densityFactor) {
+                    mutableFloatStateOf(AppSettings.densityFactor)
+                }
+                WanFeng.Seek(
+                    icon = Icons.Default.AspectRatio,
+                    title = "显示密度",
+                    subtitle = "80% ~ 110%，松手后界面重新加载",
+                    valueLabel = "${(sliderValue * 100).roundToInt()}%",
+                    value = sliderValue,
+                    onValueChange = { sliderValue = it },
+                    onCommit = {
+                        AppSettings.setDensityFactor(context, it)
+                        // 密度在 attachBaseContext 生效，需重建 Activity
+                        (context as? Activity)?.recreate()
+                    },
+                    valueRange = AppSettings.DENSITY_MIN..AppSettings.DENSITY_MAX,
+                    steps = 29   // 每 1% 一档
+                )
+                WanFeng.Divider()
+                WanFeng.Switch(
                     icon = Icons.Default.MusicNote,
                     title = "点击音效",
                     subtitle = "按钮与开关点击时的声音反馈",
                     checked = AppSettings.soundEnabled,
                     onCheckedChange = { AppSettings.setSoundEnabled(context, it) }
                 )
-                SettingsDivider()
+                WanFeng.Divider()
                 // 震动效果开关：独立于音效，不同控件触发不同震动节奏（适配按钮控件）
-                SettingsSwitchRow(
+                WanFeng.Switch(
                     icon = Icons.Default.Vibration,
                     title = "震动效果",
                     subtitle = "不同控件适配不同震动节奏",
@@ -191,14 +204,14 @@ fun SettingsScreen(
         Spacer(Modifier.height(22.dp))
 
         // ============ 背景与外观 ============
-        StaggeredItem(index = 5) { SectionLabel("背景与外观") }
+        StaggeredItem(index = 5) { WanFeng.Section("背景与外观") }
         Spacer(Modifier.height(10.dp))
         StaggeredItem(index = 6) {
             val bgCfg = AppSettings.bgConfig
             val snowOn = AppSettings.snowEnabled
 
-            GlassCard(contentPadding = 6.dp) {
-                SettingsRow(
+            WanFeng.Group {
+                WanFeng.Row(
                     icon = Icons.Default.Wallpaper,
                     iconTint = MaterialTheme.colorScheme.primary,
                     title = "背景样式",
@@ -211,8 +224,8 @@ fun SettingsScreen(
                     onClick = { showBgDialog = true }
                 )
                 if (bgCfg.mode == BgMode.COLOR) {
-                    SettingsDivider()
-                    SettingsRow(
+                    WanFeng.Divider()
+                    WanFeng.Row(
                         icon = Icons.Default.Palette,
                         iconTint = MaterialTheme.colorScheme.secondary,
                         title = "背景颜色",
@@ -220,8 +233,8 @@ fun SettingsScreen(
                         onClick = { showColorDialog = true }
                     )
                 }
-                SettingsDivider()
-                SettingsSwitchRow(
+                WanFeng.Divider()
+                WanFeng.Switch(
                     icon = Icons.Default.AcUnit,
                     title = "雪花飘落",
                     subtitle = if (snowOn) "已开启全屏雪花特效" else "已关闭",
@@ -234,28 +247,28 @@ fun SettingsScreen(
         Spacer(Modifier.height(22.dp))
 
         // ============ 应用与更新 ============
-        StaggeredItem(index = 7) { SectionLabel("应用与更新") }
+        StaggeredItem(index = 7) { WanFeng.Section("应用与更新") }
         Spacer(Modifier.height(10.dp))
         StaggeredItem(index = 8) {
-            GlassCard(contentPadding = 6.dp) {
-                SettingsRow(
+            WanFeng.Group {
+                WanFeng.Row(
                     icon = Icons.Default.CloudDownload,
                     iconTint = AppColors.successAdaptive(),
                     title = "检查更新",
                     subtitle = AppLocale.tf("当前版本 v{0}", BuildConfig.VERSION_NAME),
                     onClick = { viewModel.checkCloudConfig("update") }
                 )
-                SettingsDivider()
-                SettingsRow(
+                WanFeng.Divider()
+                WanFeng.Row(
                     icon = Icons.Default.Info,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     title = "查看公告",
                     subtitle = if (state.cloudConfig != null) "有新公告" else "暂无公告",
                     onClick = { viewModel.checkCloudConfig("announce") }
                 )
-                SettingsDivider()
+                WanFeng.Divider()
                 // 公告自动弹出开关：开 = 启动时弹公告；关 = 仅手动查看
-                SettingsSwitchRow(
+                WanFeng.Switch(
                     icon = Icons.Default.Notifications,
                     title = "启动时显示公告",
                     subtitle = "启动 App 时自动弹出新公告",
@@ -268,7 +281,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(22.dp))
 
         // ============ 关于 ============
-        StaggeredItem(index = 9) { SectionLabel("关于") }
+        StaggeredItem(index = 9) { WanFeng.Section("关于") }
         Spacer(Modifier.height(10.dp))
         StaggeredItem(index = 10) {
             Row(
@@ -281,7 +294,7 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        IconBadge(Icons.Default.VerifiedUser, MaterialTheme.colorScheme.primary, size = 42.dp)
+                        WanFeng.IconBadge(Icons.Default.VerifiedUser, MaterialTheme.colorScheme.primary, size = 42.dp)
                         Spacer(Modifier.height(10.dp))
                         Text(
                             text = "表盘 ID 工具",
@@ -404,7 +417,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(18.dp))
-                    GlassButton(
+                    WanFeng.Button(
                         text = "取消",
                         onClick = { viewModel.cancelCloudCheck() },
                         style = GlassButtonStyle.Glass,
@@ -455,158 +468,8 @@ fun SettingsScreen(
 }
 
 // ====================================================================
-// 子组件
+// 子组件（基础控件统一走 WanFeng.* 工厂，视觉与旧实现一致）
 // ====================================================================
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Medium,
-        letterSpacing = 0.3.sp,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 6.dp)
-    )
-}
-
-/** 透明玻璃图标容器（玻璃容器 + 实心中性图标，无彩色规格） */
-@Composable
-private fun IconBadge(icon: ImageVector, tint: Color, size: androidx.compose.ui.unit.Dp = 38.dp) {
-    Box(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .glow(Color.White.copy(alpha = 0.15f), radiusFraction = 1.5f)
-            .glass(CircleShape, rememberGlassColors()),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            icon,
-            contentDescription = null,
-            tint = Color(0xFFE9EBF4),
-            modifier = Modifier.size(size * 0.5f)
-        )
-    }
-}
-
-@Composable
-private fun SettingsRow(
-    icon: ImageVector,
-    iconTint: Color,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit
-) {
-    GlassCard(
-        onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
-        contentPadding = 13.dp,
-        haptic = false
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconBadge(icon, iconTint)
-            Spacer(Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.size(16.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsDivider() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 2.dp)
-            .height(1.dp)
-            .glass(
-                RoundedCornerShape(1.dp),
-                GlassColors(
-                    tintTop = Color.White.copy(alpha = 0.06f),
-                    tintBottom = Color.Transparent,
-                    highlight = Color.Transparent,
-                    rimBright = Color.Transparent,
-                    rimDim = Color.Transparent
-                )
-            )
-    )
-}
-
-/** 开关行：透明玻璃图标容器 + 标题/副标题 + 玻璃质感 Switch */
-@Composable
-private fun SettingsSwitchRow(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    val context = LocalContext.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 13.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconBadge(icon, Color.Transparent)
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = subtitle,
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = { next ->
-                if (AppSettings.soundEnabled) {
-                    com.watchface.idtool.ClickSound.play(context, com.watchface.idtool.SoundType.TOGGLE)
-                }
-                onCheckedChange(next)
-            },
-            colors = SwitchDefaults.colors(
-                // 提亮玻璃轨道：半透明白 + 亮边环，浅色滑块（液态玻璃规格）
-                checkedTrackColor = Color.White.copy(alpha = 0.30f),
-                checkedThumbColor = Color(0xFFF3F5FA),
-                checkedBorderColor = Color.White.copy(alpha = 0.75f),
-                uncheckedTrackColor = Color.White.copy(alpha = 0.12f),
-                uncheckedThumbColor = Color(0xFF9AA1B5),
-                uncheckedBorderColor = Color.White.copy(alpha = 0.22f)
-            )
-        )
-    }
-}
 
 /** 卡密登录状态：未登录点击卡片输入卡密登录；已登录可取消解锁 */
 @Composable
@@ -657,7 +520,7 @@ private fun LoginStatusSection() {
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconBadge(visual.icon, visual.tint, size = 44.dp)
+            WanFeng.IconBadge(visual.icon, visual.tint, size = 44.dp)
             Spacer(Modifier.width(13.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -693,10 +556,10 @@ private fun LoginStatusSection() {
 
         if (loggedIn) {
             Spacer(Modifier.height(14.dp))
-            GlassButton(
+            WanFeng.Button(
                 text = if (busy) "处理中…" else "取消解锁",
                 onClick = {
-                    if (busy) return@GlassButton
+                    if (busy) return@Button
                     busy = true
                     tip = ""
                     scope.launch {
@@ -709,8 +572,7 @@ private fun LoginStatusSection() {
                     }
                 },
                 style = GlassButtonStyle.Danger,
-                modifier = Modifier.fillMaxWidth(),
-                shimmer = false
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
@@ -756,13 +618,13 @@ private fun LoginStatusSection() {
                         )
                     }
                     Spacer(Modifier.height(16.dp))
-                    GlassButton(
+                    WanFeng.Button(
                         text = if (busy) "登录中…" else "登录",
                         onClick = {
-                            if (busy) return@GlassButton
+                            if (busy) return@Button
                             if (kamiInput.isBlank()) {
                                 tip = "请输入卡密"
-                                return@GlassButton
+                                return@Button
                             }
                             busy = true
                             tip = ""
@@ -821,7 +683,7 @@ private fun PermissionSection(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconBadge(visual.icon, visual.tint, size = 44.dp)
+            WanFeng.IconBadge(visual.icon, visual.tint, size = 44.dp)
             Spacer(Modifier.width(13.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -852,20 +714,18 @@ private fun PermissionSection(
         Spacer(Modifier.height(14.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            GlassButton(
+            WanFeng.Button(
                 text = "重新检测",
                 onClick = onRefresh,
                 style = GlassButtonStyle.Glass,
-                modifier = Modifier.weight(1f),
-                shimmer = false
+                modifier = Modifier.weight(1f)
             )
             if (status == PermissionStatus.NONE) {
-                GlassButton(
+                WanFeng.Button(
                     text = "Shizuku 授权",
                     onClick = onAuthorize,
                     style = GlassButtonStyle.Primary,
-                    modifier = Modifier.weight(1f),
-                    shimmer = false
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
@@ -878,65 +738,6 @@ private data class SettingsPermVisual(
     val title: String,
     val subtitle: String
 )
-
-/** 密度拉条行：80% ~ 110%，松手保存并重建界面 */
-@Composable
-private fun DensitySliderRow() {
-    val context = LocalContext.current
-    var sliderValue by remember(AppSettings.densityFactor) {
-        mutableFloatStateOf(AppSettings.densityFactor)
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 13.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconBadge(Icons.Default.AspectRatio, MaterialTheme.colorScheme.secondary)
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "显示密度",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(Modifier.weight(1f))
-                // 实时百分比（保时捷工程数字）
-                Text(
-                    text = "${(sliderValue * 100).roundToInt()}%",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = NumericFonts,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = "80% ~ 110%，松手后界面重新加载",
-                fontSize = 11.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(4.dp))
-            GlassSlider(
-                value = sliderValue,
-                onValueChange = { sliderValue = it },
-                onValueChangeFinished = {
-                    AppSettings.setDensityFactor(context, sliderValue)
-                    // 密度在 attachBaseContext 生效，需重建 Activity
-                    (context as? Activity)?.recreate()
-                },
-                valueRange = AppSettings.DENSITY_MIN..AppSettings.DENSITY_MAX,
-                steps = 29   // 每 1% 一档
-            )
-        }
-    }
-}
 
 // ====================================================================
 // 背景样式弹窗（相册图片 / 纯色 / 液态动态；默认壁纸已移除）
@@ -985,7 +786,7 @@ private fun BgStyleDialog(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            IconBadge(opt.icon, MaterialTheme.colorScheme.primary)
+                            WanFeng.IconBadge(opt.icon, MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
@@ -1154,14 +955,14 @@ private fun ColorPickerDialog(
                 Spacer(Modifier.height(12.dp))
 
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    GlassButton(
+                    WanFeng.Button(
                         text = "取消",
                         onClick = onDismiss,
                         style = GlassButtonStyle.Glass,
                         shimmer = false,
                         modifier = Modifier.weight(1f)
                     )
-                    GlassButton(
+                    WanFeng.Button(
                         text = "应用",
                         onClick = { onApply(currentArgb().toLong() and 0xFFFFFFFFL) },
                         style = GlassButtonStyle.Primary,
@@ -1175,5 +976,5 @@ private fun ColorPickerDialog(
 }
 
 // ====================================================================
-// 显示密度选择弹窗（已由内联拉条 DensitySliderRow 取代）
+// 显示密度选择弹窗（已由内联拉条 WanFeng.Seek 取代）
 // ====================================================================
