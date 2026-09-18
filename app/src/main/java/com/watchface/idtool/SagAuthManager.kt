@@ -4,36 +4,57 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.provider.Settings
 import android.util.Base64
-import com.watchface.idtool.weiyan.WeiyanVerify
-import kotlinx.coroutines.CompletableDeferred
+import com.weiyan.sdk.WYHeartbeatResult
+import com.weiyan.sdk.WYLoginResult
+import com.weiyan.sdk.WYNoticeResult
+import com.weiyan.sdk.WYUnbindResult
+import com.weiyan.sdk.WYVerify
+import com.weiyan.sdk.WYVersionResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import java.security.SecureRandom
-import java.util.concurrent.atomic.AtomicReference
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * 微验卡密登录 / 解绑 / 公告 / 更新
+ * 微验卡密登录 / 解绑 / 公告 / 更新 / 心跳
  *
- * 对外入口不变，底层调用独立文件 [WeiyanVerify]。
+ * 底层调用 libwyverify.so（com.weiyan.sdk.WYVerify）：
+ * 网络验证链接/接口调用码/协议密钥均以密文编译在 .so 内，
+ * 必须使用授权密钥（WY_KEY）才能调用，错误时所有接口返回"密钥错误"。
+ * 所有接口为同步阻塞调用，均置于 IO 线程执行。
  */
 object SagAuthManager {
 
+    /** 授权密钥：必须与 libwyverify.so 内置密钥一致 */
+    private const val WY_KEY = "wanfeng"
+
+    /** 心跳间隔（毫秒）：30 秒一次 */
+    private const val HEARTBEAT_INTERVAL_MS = 30_000L
+
+    /** 心跳失败重试的默认间隔（毫秒） */
+    private const val HEARTBEAT_RETRY_MS = 10_000L
+
     private const val PREF = "weiyan_auth_v1"
     private const val KEY_KAMI = "kami"
+    private const val KEY_TOKEN = "token"
     private const val KEY_END = "end_time"
 
     @Volatile
-    private var auth: WeiyanVerify? = null
+    private var wy: WYVerify? = null
 
     @Volatile
     var isLoggedIn: Boolean = false
@@ -41,6 +62,16 @@ object SagAuthManager {
 
     @Volatile
     var endTime: String = ""
+        private set
+
+    /** 卡密类型中文名（永久卡/天卡/次数卡/...），由 .so 内映射生成 */
+    @Volatile
+    var cardTypeName: String = ""
+        private set
+
+    /** 心跳在线人数（.so 心跳响应 msg.onlinenum） */
+    @Volatile
+    var onlineNum: String = ""
         private set
 
     @Volatile
@@ -52,8 +83,10 @@ object SagAuthManager {
         private set
 
     private var currentKami: String = ""
+    private var currentToken: String = ""
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var heartbeatJob: Job? = null
     private var restoreJob: Job? = null
 
     @Volatile
@@ -79,23 +112,24 @@ object SagAuthManager {
     @Synchronized
     fun init(context: Context? = null): Boolean {
         if (!SagConfig.ENABLED) return true
-        if (auth != null) return true
+        if (wy != null) return true
         if (context == null) {
             lastError = "验证未初始化：缺少 Context"
             return false
         }
         return try {
-            auth = WeiyanVerify(context.applicationContext)
+            // 授权密钥错误时实例未授权，所有接口返回"密钥错误"
+            wy = WYVerify(WY_KEY)
             true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             lastError = "微验初始化失败: ${e.message}"
             false
         }
     }
 
-    fun ensureInit(context: Context): WeiyanVerify? {
+    fun ensureInit(context: Context): WYVerify? {
         if (!init(context)) return null
-        return auth
+        return wy
     }
 
     @SuppressLint("HardwareIds")
@@ -159,89 +193,87 @@ object SagAuthManager {
         val statecode: String = ""
     )
 
-    private class PendingCallback {
-        val notice = CompletableDeferred<String>()
-        val update = CompletableDeferred<UpdateInfo>()
-        val login = CompletableDeferred<AuthResult>()
-        val unbind = CompletableDeferred<AuthResult>()
+    /** 到期时间戳(秒) -> "yyyy-MM-dd HH:mm:ss" */
+    private fun formatEndTime(ts: Long): String {
+        if (ts <= 0) return ""
+        return try {
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(ts * 1000L))
+        } catch (_: Exception) {
+            ts.toString()
+        }
     }
 
-    private data class UpdateInfo(
-        val hasUpdate: Boolean,
-        val version: String,
-        val updateUrl: String,
-        val updateShow: String
-    )
-
-    private val pendingRef = AtomicReference<PendingCallback?>(null)
-
-    private fun installCallback(v: WeiyanVerify, pending: PendingCallback) {
-        pendingRef.set(pending)
-        v.setCallback(object : WeiyanVerify.AuthCallback {
-            override fun onNotice(notice: String?) {
-                pending.notice.complete(notice ?: "")
-            }
-
-            override fun onUpdateCheck(
-                hasUpdate: Boolean,
-                version: String?,
-                updateUrl: String?,
-                updateShow: String?
-            ) {
-                pending.update.complete(
-                    UpdateInfo(hasUpdate, version ?: "", updateUrl ?: "", updateShow ?: "")
-                )
-            }
-
-            override fun onLoginSuccessSingle(remainCount: Int) {
-                pending.login.complete(
-                    AuthResult(true, "登录成功，剩余次数：$remainCount", endTime = "次数卡($remainCount)")
-                )
-            }
-
-            override fun onLoginSuccessTime(expireTime: String?, expireTimestamp: Long) {
-                val et = expireTime ?: ""
-                pending.login.complete(
-                    AuthResult(true, "登录成功，到期：$et", endTime = et)
-                )
-            }
-
-            override fun onLoginFailed(msg: String?) {
-                pending.login.complete(AuthResult(false, msg ?: "登录失败"))
-            }
-
-            override fun onUnbind(success: Boolean, msg: String?, remainNum: String?) {
-                val detail = buildString {
-                    append(msg ?: if (success) "解绑成功" else "解绑失败")
-                    if (!remainNum.isNullOrBlank()) append("（剩余解绑次数：$remainNum）")
-                }
-                pending.unbind.complete(AuthResult(success, detail))
-            }
-
-            override fun onError(apiName: String?, error: String?) {
-                val name = apiName ?: ""
-                val err = error ?: "未知错误"
-                when {
-                    name.contains("login", ignoreCase = true) ->
-                        pending.login.complete(AuthResult(false, err))
-                    name.contains("unbind", ignoreCase = true) ->
-                        pending.unbind.complete(AuthResult(false, err))
-                    name.contains("getNotice", ignoreCase = true) ->
-                        pending.notice.complete("")
-                    name.contains("checkUpdate", ignoreCase = true) ->
-                        pending.update.complete(UpdateInfo(false, "", "", ""))
-                    else -> {
-                        if (!pending.login.isCompleted) {
-                            pending.login.complete(AuthResult(false, "$name: $err"))
-                        }
-                        if (!pending.unbind.isCompleted) {
-                            pending.unbind.complete(AuthResult(false, "$name: $err"))
-                        }
-                    }
-                }
-            }
-        })
+    /** 卡密时长类型中文名兜底（正常情况下 .so 已返回 kmtypeName/timetypeName） */
+    private fun cardTypeText(kmtype: String): String = when (kmtype) {
+        "free" -> "免费卡"
+        "hour" -> "时卡"
+        "day" -> "天卡"
+        "week" -> "周卡"
+        "month" -> "月卡"
+        "season" -> "季卡"
+        "year" -> "年卡"
+        "longuse" -> "永久卡"
+        "single" -> "次数卡"
+        else -> ""
     }
+
+    // ================= 心跳 =================
+
+    /** 启动自动心跳：每 30 秒一次；令牌过期(code=105)时自动重新登录换取新 token */
+    fun startHeartbeat(appContext: Context) {
+        val ctx = appContext.applicationContext
+        if (!SagConfig.ENABLED) return
+        if (heartbeatJob?.isActive == true) return
+        heartbeatJob = scope.launch {
+            while (isActive) {
+                delay(HEARTBEAT_INTERVAL_MS)
+                if (!isLoggedIn) continue
+                try {
+                    heartbeatOnce(ctx)
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
+    fun stopHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
+    }
+
+    private suspend fun heartbeatOnce(context: Context) {
+        val kami = currentKami
+        val token = currentToken
+        if (kami.isEmpty() || token.isEmpty()) return
+        val v = ensureInit(context) ?: return
+        val r: WYHeartbeatResult = withContext(Dispatchers.IO) {
+            v.heartbeat(kami, getMachineCode(context), token)
+        }
+        when {
+            // 数据过期/令牌失效：自动重新登录换取新 token
+            r.code == 105L || (!r.success && r.msg?.contains("过期") == true) -> {
+                val login = doLogin(context, kami, fromRestore = false)
+                if (!login.success) {
+                    // 重登失败（卡密失效/被封等）：登出
+                    logout(context)
+                    lastError = login.message
+                }
+            }
+            r.success -> {
+                endTime = formatEndTime(r.endTime)
+                if (r.timetypeName?.isNotEmpty() == true) cardTypeName = r.timetypeName
+                if (r.onlinenum?.isNotEmpty() == true) onlineNum = r.onlinenum
+                lastError = ""
+            }
+            else -> {
+                // 网络/服务器异常：保留登录态，稍后重试
+                lastError = (r.msg ?: "").ifBlank { "心跳失败" }
+                delay(HEARTBEAT_RETRY_MS)
+            }
+        }
+    }
+
+    // ================= 会话恢复 =================
 
     suspend fun restoreSession(context: Context) {
         if (!SagConfig.ENABLED) {
@@ -256,10 +288,34 @@ object SagAuthManager {
             isRestoringSession = false
             return
         }
-        val result = login(context, kami, fromRestore = true)
-        if (!result.success) {
+        currentKami = kami
+        currentKamiMasked = maskKami(kami)
+        currentToken = sp.getString(KEY_TOKEN, "") ?: ""
+
+        // 优先用保存的 token 心跳验证恢复会话；令牌失效则重新登录
+        var ok = false
+        val v = ensureInit(context)
+        if (v != null && currentToken.isNotEmpty()) {
+            val r = withContext(Dispatchers.IO) {
+                v.heartbeat(kami, getMachineCode(context), currentToken)
+            }
+            if (r.success) {
+                endTime = formatEndTime(r.endTime)
+                if (r.timetypeName?.isNotEmpty() == true) cardTypeName = r.timetypeName
+                if (r.onlinenum?.isNotEmpty() == true) onlineNum = r.onlinenum
+                ok = true
+            }
+        }
+        if (!ok) {
+            val result = login(context, kami, fromRestore = true)
+            ok = result.success
+        }
+        if (!ok) {
             currentKami = ""
+            currentToken = ""
             endTime = ""
+            cardTypeName = ""
+            onlineNum = ""
             currentKamiMasked = ""
             setLoginState(false)
             sp.edit().clear().apply()
@@ -285,9 +341,7 @@ object SagAuthManager {
         }
     }
 
-    fun startHeartbeat(appContext: Context) { /* 微验无心跳 */ }
-
-    fun stopHeartbeat() { /* no-op */ }
+    // ================= 登录 =================
 
     suspend fun login(context: Context, kami: String): AuthResult =
         login(context, kami, fromRestore = false)
@@ -297,36 +351,48 @@ object SagAuthManager {
         kami: String,
         fromRestore: Boolean
     ): AuthResult = withContext(Dispatchers.IO) {
+        doLogin(context, kami, fromRestore)
+    }
+
+    /** 同步登录（调用方需在 IO 线程） */
+    private fun doLogin(context: Context, kami: String, fromRestore: Boolean): AuthResult {
         if (!SagConfig.ENABLED) {
             setLoginState(true)
-            return@withContext AuthResult(true, "验证已关闭（调试）")
+            return AuthResult(true, "验证已关闭（调试）")
         }
         if (!init(context)) {
-            return@withContext AuthResult(false, lastError.ifBlank { "SDK 初始化失败" })
+            return AuthResult(false, lastError.ifBlank { "SDK 初始化失败" })
         }
         val card = kami.trim()
-        if (card.isEmpty()) return@withContext AuthResult(false, "请输入卡密")
+        if (card.isEmpty()) return AuthResult(false, "请输入卡密")
 
-        val v = auth!!
-        val pending = PendingCallback()
-        installCallback(v, pending)
-
-        try {
-            v.login(card)
-            val result = pending.login.await()
-            if (result.success) {
+        val v = wy!!
+        return try {
+            val r: WYLoginResult = v.login(card, getMachineCode(context))
+            if (r.success) {
                 currentKami = card
-                endTime = result.endTime
+                currentToken = r.token
                 currentKamiMasked = maskKami(card)
+                endTime = when {
+                    r.type == "single" -> "次数卡(${r.remain})"
+                    r.endTime > 0 -> formatEndTime(r.endTime)
+                    else -> ""
+                }
+                cardTypeName = (r.kmtypeName ?: "").ifEmpty { cardTypeText(r.kmtype) }
                 setLoginState(true)
                 lastError = ""
                 context.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
                     .putString(KEY_KAMI, encryptKami(context, card))
+                    .putString(KEY_TOKEN, r.token)
                     .putString(KEY_END, endTime)
                     .apply()
-                result
+                // 登录成功后自动启动心跳
+                startHeartbeat(context)
+                val tip = if (cardTypeName.isNotEmpty()) "（$cardTypeName）" else ""
+                val end = if (endTime.isNotEmpty()) "，$endTime" else ""
+                AuthResult(true, "登录成功$tip$end", endTime = endTime)
             } else {
-                lastError = result.message
+                lastError = (r.msg ?: "").ifBlank { "登录失败" }
                 if (!fromRestore) setLoginState(false)
                 AuthResult(false, lastError)
             }
@@ -335,6 +401,8 @@ object SagAuthManager {
             AuthResult(false, lastError)
         }
     }
+
+    // ================= 解绑 =================
 
     suspend fun unbindKami(context: Context, kami: String? = null): AuthResult =
         withContext(Dispatchers.IO) {
@@ -355,18 +423,15 @@ object SagAuthManager {
                 return@withContext AuthResult(false, lastError.ifBlank { "SDK 初始化失败" })
             }
 
-            val v = auth!!
-            val pending = PendingCallback()
-            installCallback(v, pending)
-
+            val v = wy!!
             try {
-                v.unbind(card)
-                val result = pending.unbind.await()
+                val r: WYUnbindResult = v.unbind(card, getMachineCode(context))
                 logout(context)
-                if (result.success) {
-                    AuthResult(true, result.message.ifBlank { "已退出登录（设备已解绑）" })
+                if (r.success) {
+                    val remain = if (r.remain > 0) "（剩余解绑次数：${r.remain}）" else ""
+                    AuthResult(true, "已退出登录（设备已解绑）$remain")
                 } else {
-                    AuthResult(true, "已退出登录（${result.message}）")
+                    AuthResult(true, "已退出登录（${(r.msg ?: "").ifBlank { "解绑失败" }}）")
                 }
             } catch (e: Exception) {
                 logout(context)
@@ -378,8 +443,11 @@ object SagAuthManager {
         stopHeartbeat()
         setLoginState(false)
         currentKami = ""
+        currentToken = ""
         currentKamiMasked = ""
         endTime = ""
+        cardTypeName = ""
+        onlineNum = ""
     }
 
     fun skipLogin() {
@@ -394,6 +462,8 @@ object SagAuthManager {
         return decryptKami(context, blob) ?: blob
     }
 
+    // ================= 公告 / 更新 =================
+
     data class NoticeVersion(
         val notice: String,
         val latestVersion: String,
@@ -404,13 +474,10 @@ object SagAuthManager {
 
     suspend fun fetchNoticeAndVersion(localVersion: String): NoticeVersion =
         withContext(Dispatchers.IO) {
-            val v = auth
+            val v = wy
             if (v == null) {
                 return@withContext NoticeVersion("", localVersion, false)
             }
-
-            val pending = PendingCallback()
-            installCallback(v, pending)
 
             var notice = ""
             var latest = ""
@@ -419,21 +486,19 @@ object SagAuthManager {
             var upurl = ""
 
             try {
-                v.getNotice()
-                notice = pending.notice.await()
+                val n: WYNoticeResult = v.getNotice()
+                notice = if (n.success) n.notice else ""
             } catch (_: Exception) {
             }
 
             try {
-                v.checkUpdate()
-                val u = pending.update.await()
-                latest = u.version
-                uplog = u.updateShow
-                upurl = unescapeHtmlEntities(u.updateUrl)
-                hasUpdate = if (latest.isNotEmpty()) {
-                    compareVersion(latest, localVersion) > 0
-                } else {
-                    u.hasUpdate
+                val u: WYVersionResult = v.checkUpdate(localVersion)
+                if (u.success) {
+                    latest = u.version
+                    uplog = u.updateshow
+                    upurl = unescapeHtmlEntities(u.updateurl)
+                    hasUpdate = u.hasUpdate ||
+                        (latest.isNotEmpty() && compareVersion(latest, localVersion) > 0)
                 }
             } catch (_: Exception) {
             }

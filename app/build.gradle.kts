@@ -18,6 +18,11 @@ android {
         targetSdk = 36
         versionCode = 39
         versionName = "3.9"
+
+        // 微验 SDK 仅提供 arm64-v8a 的 libwyverify.so
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     signingConfigs {

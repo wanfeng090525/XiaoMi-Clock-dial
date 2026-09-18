@@ -1,20 +1,11 @@
 # Watchface ID Tool - R8 Rules (Java 21 / Kotlin 2.1)
 # 启用后 R8 会执行：类裁剪、方法内联、字符串折叠、Dead Code Elimination
 
-# ---- 保护 Obf 密钥类不被 R8 内联/折叠（关键安全类） ----
--keep class com.watchface.idtool.weiyan.Obf { *; }
--dontwarn com.watchface.idtool.weiyan.Obf
--keepclassmembers class com.watchface.idtool.weiyan.Obf {
-    public static <fields>;
-    public static <methods>;
-}
-# 防止 R8 移除 Obf 中的任何成员
--keep,allowobfuscation,allowshrinking class com.watchface.idtool.weiyan.Obf { *; }
-
-# ---- 保护 WeiyanVerify 类结构 ----
--keep class com.watchface.idtool.weiyan.WeiyanVerify { *; }
--dontwarn com.watchface.idtool.weiyan.WeiyanVerify
--keep class com.watchface.idtool.weiyan.WeiyanVerify$AuthCallback { *; }
+# ---- 保护微验 SDK（libwyverify.so JNI 静态符号注册，类名/方法名不可混淆） ----
+# native 方法符号为 Java_com_weiyan_sdk_WYVerify_native*，R8 混淆会导致
+# UnsatisfiedLinkError；结果类字段由 JNI 反射 Set*Field 写入，同样必须保留。
+-keep class com.weiyan.sdk.** { *; }
+-dontwarn com.weiyan.sdk.**
 
 # ---- Shizuku（反射调用，保留入口） ----
 -keep class rikka.shizuku.** { *; }
