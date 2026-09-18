@@ -76,10 +76,16 @@ import kotlin.math.roundToInt
 /**
  * 设置页（深色玻璃 · ColorOS 控制中心风格）
  *
- * 结构：
- *   1. 权限管理    当前状态卡 + 重新检测 / Shizuku 授权
- *   2. 应用与更新  检查更新 + 公告
- *   3. 关于        版本信息
+ * 布局对齐 Lua 版 wanfeng.menu：顶部页签 + 每页平铺声明式控件，
+ * 一页一个 WanFeng.Page 代码块，一眼看懂该页有哪些开关 / 按钮 / 拉条。
+ *
+ * 页面：
+ *   1. 账号    卡密登录状态 + 取消解锁
+ *   2. 权限    Root / Shell / 文件访问 状态卡 + 重新检测 / Shizuku 授权
+ *   3. 界面    显示密度拉条 + 音效 + 震动
+ *   4. 外观    背景样式 / 背景颜色 + 雪花飘落
+ *   5. 更新    检查更新 + 查看公告 + 启动时显示公告
+ *   6. 关于    表盘 ID 工具 + Github 仓库
  *
  * 所有图标均置于透明玻璃容器中（玻璃容器 + 实心图标规格）。
  */
@@ -114,246 +120,225 @@ fun SettingsScreen(
         Spacer(Modifier.height(16.dp))
 
         // ============ 标题 ============
-        StaggeredItem(index = 0) {
-            Text(
-                text = "设置",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 0.3.sp,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "",//SETTINGS
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 1.6.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+        Text(
+            text = "设置",
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 0.3.sp,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "",//SETTINGS
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 1.6.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
         Spacer(Modifier.height(20.dp))
 
-        // ============ 卡密登录状态 ============
-        StaggeredItem(index = 1) { WanFeng.Section("卡密登录") }
-        Spacer(Modifier.height(10.dp))
-        StaggeredItem(index = 2) {
-            LoginStatusSection()
-        }
+        // ============ 多页面菜单（对应 Lua wanfeng.menu：顶部页签 + 每页平铺控件） ============
+        WanFeng.Menu(
+            pages = listOf(
+                // ---- 账号页：卡密登录 ----
+                WanFeng.Page("账号") {
+                    LoginStatusSection()
+                },
 
-        Spacer(Modifier.height(22.dp))
-
-        // ============ 权限管理 ============
-        StaggeredItem(index = 3) { WanFeng.Section("权限管理") }
-        Spacer(Modifier.height(10.dp))
-        StaggeredItem(index = 4) {
-            PermissionSection(
-                status = state.permissionStatus,
-                onRefresh = { viewModel.checkPermissionStatus() },
-                onAuthorize = { viewModel.requestShizukuPermission() }
-            )
-        }
-
-        Spacer(Modifier.height(22.dp))
-
-        // ============ 界面与语言 ============
-        StaggeredItem(index = 5) { WanFeng.Section("界面与语言") }
-        Spacer(Modifier.height(10.dp))
-        StaggeredItem(index = 4) {
-            val context = LocalContext.current
-            WanFeng.Group {
-                // 显示密度拉条：80% ~ 110%，实时百分比
-                var sliderValue by remember(AppSettings.densityFactor) {
-                    mutableFloatStateOf(AppSettings.densityFactor)
-                }
-                WanFeng.Seek(
-                    icon = Icons.Default.AspectRatio,
-                    title = "显示密度",
-                    subtitle = "80% ~ 110%，松手后界面重新加载",
-                    valueLabel = "${(sliderValue * 100).roundToInt()}%",
-                    value = sliderValue,
-                    onValueChange = { sliderValue = it },
-                    onCommit = {
-                        AppSettings.setDensityFactor(context, it)
-                        // 密度在 attachBaseContext 生效，需重建 Activity
-                        (context as? Activity)?.recreate()
-                    },
-                    valueRange = AppSettings.DENSITY_MIN..AppSettings.DENSITY_MAX,
-                    steps = 29   // 每 1% 一档
-                )
-                WanFeng.Divider()
-                WanFeng.Switch(
-                    icon = Icons.Default.MusicNote,
-                    title = "点击音效",
-                    subtitle = "按钮与开关点击时的声音反馈",
-                    checked = AppSettings.soundEnabled,
-                    onCheckedChange = { AppSettings.setSoundEnabled(context, it) }
-                )
-                WanFeng.Divider()
-                // 震动效果开关：独立于音效，不同控件触发不同震动节奏（适配按钮控件）
-                WanFeng.Switch(
-                    icon = Icons.Default.Vibration,
-                    title = "震动效果",
-                    subtitle = "不同控件适配不同震动节奏",
-                    checked = AppSettings.vibrationEnabled,
-                    onCheckedChange = { AppSettings.setVibrationEnabled(context, it) }
-                )
-            }
-        }
-
-        Spacer(Modifier.height(22.dp))
-
-        // ============ 背景与外观 ============
-        StaggeredItem(index = 5) { WanFeng.Section("背景与外观") }
-        Spacer(Modifier.height(10.dp))
-        StaggeredItem(index = 6) {
-            val bgCfg = AppSettings.bgConfig
-            val snowOn = AppSettings.snowEnabled
-
-            WanFeng.Group {
-                WanFeng.Row(
-                    icon = Icons.Default.Wallpaper,
-                    iconTint = MaterialTheme.colorScheme.primary,
-                    title = "背景样式",
-                    subtitle = when (bgCfg.mode) {
-                        BgMode.GALLERY -> "自定义图片"
-                        BgMode.COLOR -> "纯色背景"
-                        BgMode.LIQUID -> "液态动态"
-                        else -> "液态动态"   // 原默认壁纸已移除，统一按液态动态展示
-                    },
-                    onClick = { showBgDialog = true }
-                )
-                if (bgCfg.mode == BgMode.COLOR) {
-                    WanFeng.Divider()
-                    WanFeng.Row(
-                        icon = Icons.Default.Palette,
-                        iconTint = MaterialTheme.colorScheme.secondary,
-                        title = "背景颜色",
-                        subtitle = "自定义纯色（保持界面可读的深色调）",
-                        onClick = { showColorDialog = true }
+                // ---- 权限页：Root / Shell / 文件访问 ----
+                WanFeng.Page("权限") {
+                    PermissionSection(
+                        status = state.permissionStatus,
+                        onRefresh = { viewModel.checkPermissionStatus() },
+                        onAuthorize = { viewModel.requestShizukuPermission() }
                     )
-                }
-                WanFeng.Divider()
-                WanFeng.Switch(
-                    icon = Icons.Default.AcUnit,
-                    title = "雪花飘落",
-                    subtitle = if (snowOn) "已开启全屏雪花特效" else "已关闭",
-                    checked = snowOn,
-                    onCheckedChange = { AppSettings.setSnowEnabled(context, it) }
-                )
-            }
-        }
+                },
 
-        Spacer(Modifier.height(22.dp))
-
-        // ============ 应用与更新 ============
-        StaggeredItem(index = 7) { WanFeng.Section("应用与更新") }
-        Spacer(Modifier.height(10.dp))
-        StaggeredItem(index = 8) {
-            WanFeng.Group {
-                WanFeng.Row(
-                    icon = Icons.Default.CloudDownload,
-                    iconTint = AppColors.successAdaptive(),
-                    title = "检查更新",
-                    subtitle = AppLocale.tf("当前版本 v{0}", BuildConfig.VERSION_NAME),
-                    onClick = { viewModel.checkCloudConfig("update") }
-                )
-                WanFeng.Divider()
-                WanFeng.Row(
-                    icon = Icons.Default.Info,
-                    iconTint = MaterialTheme.colorScheme.secondary,
-                    title = "查看公告",
-                    subtitle = if (state.cloudConfig != null) "有新公告" else "暂无公告",
-                    onClick = { viewModel.checkCloudConfig("announce") }
-                )
-                WanFeng.Divider()
-                // 公告自动弹出开关：开 = 启动时弹公告；关 = 仅手动查看
-                WanFeng.Switch(
-                    icon = Icons.Default.Notifications,
-                    title = "启动时显示公告",
-                    subtitle = "启动 App 时自动弹出新公告",
-                    checked = AppSettings.announceAutoShow,
-                    onCheckedChange = { AppSettings.setAnnounceAutoShow(context, it) }
-                )
-            }
-        }
-
-        Spacer(Modifier.height(22.dp))
-
-        // ============ 关于 ============
-        StaggeredItem(index = 9) { WanFeng.Section("关于") }
-        Spacer(Modifier.height(10.dp))
-        StaggeredItem(index = 10) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // 表盘 ID 工具：与 Github 按钮等宽并行，比例协调
-                GlassCard(modifier = Modifier.weight(1f), shape = RoundedCornerShape(22.dp)) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        WanFeng.IconBadge(Icons.Default.VerifiedUser, MaterialTheme.colorScheme.primary, size = 42.dp)
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = "表盘 ID 工具",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
+                // ---- 界面页：显示密度 + 音效 + 震动 ----
+                WanFeng.Page("界面") {
+                    WanFeng.Group {
+                        // 显示密度拉条：80% ~ 110%，实时百分比
+                        var sliderValue by remember(AppSettings.densityFactor) {
+                            mutableFloatStateOf(AppSettings.densityFactor)
+                        }
+                        WanFeng.Seek(
+                            icon = Icons.Default.AspectRatio,
+                            title = "显示密度",
+                            subtitle = "80% ~ 110%，松手后界面重新加载",
+                            valueLabel = "${(sliderValue * 100).roundToInt()}%",
+                            value = sliderValue,
+                            onValueChange = { sliderValue = it },
+                            onCommit = {
+                                AppSettings.setDensityFactor(context, it)
+                                // 密度在 attachBaseContext 生效，需重建 Activity
+                                (context as? Activity)?.recreate()
+                            },
+                            valueRange = AppSettings.DENSITY_MIN..AppSettings.DENSITY_MAX,
+                            steps = 29   // 每 1% 一档
                         )
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = "WATCHFACE ID TOOL · v${BuildConfig.VERSION_NAME}",
-                            fontSize = 9.sp,
-                            lineHeight = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        WanFeng.Divider()
+                        WanFeng.Switch(
+                            icon = Icons.Default.MusicNote,
+                            title = "点击音效",
+                            subtitle = "按钮与开关点击时的声音反馈",
+                            checked = AppSettings.soundEnabled,
+                            onCheckedChange = { AppSettings.setSoundEnabled(context, it) }
+                        )
+                        WanFeng.Divider()
+                        // 震动效果开关：独立于音效，不同控件触发不同震动节奏（适配按钮控件）
+                        WanFeng.Switch(
+                            icon = Icons.Default.Vibration,
+                            title = "震动效果",
+                            subtitle = "不同控件适配不同震动节奏",
+                            checked = AppSettings.vibrationEnabled,
+                            onCheckedChange = { AppSettings.setVibrationEnabled(context, it) }
                         )
                     }
-                }
+                },
 
-                // Github 按钮：点击跳转开源仓库
-                GlassCard(
-                    onClick = {
-                        runCatching {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/wanfeng090525/XiaoMi-Clock-dial"))
+                // ---- 外观页：背景样式 + 雪花 ----
+                WanFeng.Page("外观") {
+                    val bgCfg = AppSettings.bgConfig
+                    val snowOn = AppSettings.snowEnabled
+                    WanFeng.Group {
+                        WanFeng.Row(
+                            icon = Icons.Default.Wallpaper,
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            title = "背景样式",
+                            subtitle = when (bgCfg.mode) {
+                                BgMode.GALLERY -> "自定义图片"
+                                BgMode.COLOR -> "纯色背景"
+                                BgMode.LIQUID -> "液态动态"
+                                else -> "液态动态"   // 原默认壁纸已移除，统一按液态动态展示
+                            },
+                            onClick = { showBgDialog = true }
+                        )
+                        if (bgCfg.mode == BgMode.COLOR) {
+                            WanFeng.Divider()
+                            WanFeng.Row(
+                                icon = Icons.Default.Palette,
+                                iconTint = MaterialTheme.colorScheme.secondary,
+                                title = "背景颜色",
+                                subtitle = "自定义纯色（保持界面可读的深色调）",
+                                onClick = { showColorDialog = true }
                             )
                         }
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(22.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            painter = painterResource(id = com.watchface.idtool.R.drawable.ic_github),
-                            contentDescription = "Github 仓库",
-                            tint = Color(0xFFF3F5FA),
-                            modifier = Modifier.size(38.dp)
-                        )
-                        Spacer(Modifier.height(10.dp))
-                        Text(
-                            text = "Github 仓库",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(Modifier.height(3.dp))
-                        Text(
-                            text = "查看开源仓库",
-                            fontSize = 9.sp,
-                            lineHeight = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        WanFeng.Divider()
+                        WanFeng.Switch(
+                            icon = Icons.Default.AcUnit,
+                            title = "雪花飘落",
+                            subtitle = if (snowOn) "已开启全屏雪花特效" else "已关闭",
+                            checked = snowOn,
+                            onCheckedChange = { AppSettings.setSnowEnabled(context, it) }
                         )
                     }
+                },
+
+                // ---- 更新页：检查更新 + 公告 ----
+                WanFeng.Page("更新") {
+                    WanFeng.Group {
+                        WanFeng.Row(
+                            icon = Icons.Default.CloudDownload,
+                            iconTint = AppColors.successAdaptive(),
+                            title = "检查更新",
+                            subtitle = AppLocale.tf("当前版本 v{0}", BuildConfig.VERSION_NAME),
+                            onClick = { viewModel.checkCloudConfig("update") }
+                        )
+                        WanFeng.Divider()
+                        WanFeng.Row(
+                            icon = Icons.Default.Info,
+                            iconTint = MaterialTheme.colorScheme.secondary,
+                            title = "查看公告",
+                            subtitle = if (state.cloudConfig != null) "有新公告" else "暂无公告",
+                            onClick = { viewModel.checkCloudConfig("announce") }
+                        )
+                        WanFeng.Divider()
+                        // 公告自动弹出开关：开 = 启动时弹公告；关 = 仅手动查看
+                        WanFeng.Switch(
+                            icon = Icons.Default.Notifications,
+                            title = "启动时显示公告",
+                            subtitle = "启动 App 时自动弹出新公告",
+                            checked = AppSettings.announceAutoShow,
+                            onCheckedChange = { AppSettings.setAnnounceAutoShow(context, it) }
+                        )
+                    }
+                },
+
+                // ---- 关于页：表盘 ID 工具 + Github 仓库 ----
+                WanFeng.Page("关于") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // 表盘 ID 工具：与 Github 按钮等宽并行，比例协调
+                        GlassCard(modifier = Modifier.weight(1f), shape = RoundedCornerShape(22.dp)) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                WanFeng.IconBadge(Icons.Default.VerifiedUser, MaterialTheme.colorScheme.primary, size = 42.dp)
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    text = "表盘 ID 工具",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    text = "WATCHFACE ID TOOL · v${BuildConfig.VERSION_NAME}",
+                                    fontSize = 9.sp,
+                                    lineHeight = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+
+                        // Github 按钮：点击跳转开源仓库
+                        GlassCard(
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/wanfeng090525/XiaoMi-Clock-dial"))
+                                    )
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(22.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = com.watchface.idtool.R.drawable.ic_github),
+                                    contentDescription = "Github 仓库",
+                                    tint = Color(0xFFF3F5FA),
+                                    modifier = Modifier.size(38.dp)
+                                )
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    text = "Github 仓库",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    text = "查看开源仓库",
+                                    fontSize = 9.sp,
+                                    lineHeight = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-        }
+            )
+        )
 
         Spacer(Modifier.height(100.dp))
     }

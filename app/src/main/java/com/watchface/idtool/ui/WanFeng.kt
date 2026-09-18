@@ -1,5 +1,14 @@
 package com.watchface.idtool.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -20,8 +29,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,6 +66,69 @@ import com.watchface.idtool.SoundType
  *   WanFeng.Divider ⇐ 分组分隔线
  */
 object WanFeng {
+
+    /** 多页面菜单（对应 Lua 版 wanfeng.menu：顶部页签 + 单页内容） */
+    @Composable
+    fun Menu(
+        pages: List<Page>,
+        modifier: Modifier = Modifier
+    ) {
+        val context = LocalContext.current
+        var pageIndex by rememberSaveable { mutableIntStateOf(0) }
+        Column(modifier = modifier) {
+            // 顶部页签（玻璃分段控制条）
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                pages.forEachIndexed { i, page ->
+                    val selected = i == pageIndex
+                    Text(
+                        text = page.title,
+                        fontSize = 12.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (selected) Color.White.copy(alpha = 0.14f)
+                                else Color.White.copy(alpha = 0.05f)
+                            )
+                            .clickable {
+                                if (AppSettings.soundEnabled) {
+                                    ClickSound.play(context, SoundType.TOGGLE)
+                                }
+                                pageIndex = i
+                            }
+                            .padding(vertical = 10.dp)
+                            .fillMaxWidth()
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            // 当前页内容（切换带轻量滑动过渡）
+            AnimatedContent(
+                targetState = pageIndex,
+                transitionSpec = {
+                    (fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it / 8 })
+                        .togetherWith(fadeOut(tween(140)))
+                },
+                label = "wanfengMenuPage"
+            ) { idx ->
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    pages[idx].content()
+                }
+            }
+        }
+    }
+
+    /** 页面（对应 wanfeng.menu 中一个 tab：标题 + 平铺控件列表） */
+    class Page(
+        val title: String,
+        val content: @Composable () -> Unit
+    )
 
     /** 分区标题（对应 Lua 页面里的分组标题） */
     @Composable
