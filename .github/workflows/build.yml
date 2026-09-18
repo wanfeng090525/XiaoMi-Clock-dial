@@ -29,6 +29,10 @@ jobs:
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          # AGP 9.1 + compileSdk 37 需要 platform 37 与对应 build-tools
+          sdkmanager "platforms;android-37" "build-tools;37.0.0" >/dev/null 2>&1 \
+            || echo "::warning::sdkmanager 安装 android-37 失败，继续尝试构建"
+          sdkmanager --list_installed 2>/dev/null | head -30 || true
 
       # 同时构建 Debug(自动签名)与 Release(使用源码 keystore/watchface.jks 自动签名)
       # 构建输出全程落盘，失败时供后续步骤提取错误
