@@ -38,6 +38,10 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.blur.HazeColorEffect
+import dev.chrisbanes.haze.blur.blurEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -67,6 +71,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -130,7 +135,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 // ====================================================================
-// 液态玻璃设计系统 v2（Liquid Glass · 深色基底 · 保时捷工程风）
+// 液态玻璃设计系统 v4（Liquid Glass · 深色基底 · 高透背光）
 //
 // 对齐参考规格（控制中心式液态玻璃）：
 //   · 玻璃填充 8~15% 白 + 顶部菲涅尔亮线 + 非对称左上/右下折射边
@@ -174,6 +179,16 @@ data class GlassColors(
     val rimDim: Color
 )
 
+/**
+ * 全局液态玻璃背光源。MainActivity 通过 CompositionLocal 提供背景 HazeState，
+ * 卡片/按钮不需要逐级透传 state，即可统一获得真实背光模糊。
+ */
+val LocalGlassHazeState = compositionLocalOf<HazeState?> { null }
+
+/** 玻璃模糊的统一规格，避免每个控件各自调参造成观感不一致。 */
+private val GlassBlurRadius = 18.dp
+private val GlassNoiseFactor = 0.035f
+
 /** 默认深色液态玻璃材质 */
 @Composable
 fun rememberGlassColors(
@@ -188,77 +203,150 @@ fun rememberGlassColors(
 )
 
 /**
- * 液态玻璃材质绘制（v2 —— 菲涅尔折射规格）：
+ * 液态玻璃材质绘制（v4 —— 真实背光 + 曲面高光折射规格）：
  *
  *   1. 玻璃主体    上亮下暗的低填充底（8~15% 白）
- *   2. 顶部光泽    自上而下渐隐的镜面高光（模拟厚玻璃）
+ *   2. 椭圆高光泡  左上偏心的镜面光斑（球面厚玻璃体积感，替代平铺渐变）
  *   3. 菲涅尔亮缘  顶边 1.5px 亮线，向两端渐隐（抛光边缘）
  *   4. 折射描边    左上受光 → 右下背光的非对称渐变描边
+ *   5. 色散裂纹    亮缘两端极低透明度的冷暖分光（模拟光线经玻璃折射的色散）
  */
 fun Modifier.glass(
     shape: Shape,
     colors: GlassColors,
     borderAlpha: Float = 1f,
-    highlightAlpha: Float = 1f
-): Modifier = this.drawBehind {
-    val outline = shape.createOutline(size, layoutDirection, this)
+    highlightAlpha: Float = 1f,
+    hazeState: HazeState? = null,
+    blurRadius: Dp = GlassBlurRadius
+): Modifier {
+    // Haze 必须先于材质绘制层，保证模糊的是玻璃下面的内容，而不是
+    // 玻璃自身；同时先 clip，避免小尺寸圆形控件在四角出现残影。
+    val blur = if (hazeState != null && blurRadius.value > 0f) {
+        Modifier
+            .clip(shape)
+            .hazeEffect(state = hazeState) {
+                blurEffect {
+                    this.blurRadius = blurRadius
+                    colorEffects = listOf(
+                        HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
+                        HazeColorEffect.tint(Color.White.copy(alpha = 0.035f))
+                    )
+                    noiseFactor = GlassNoiseFactor
+                }
+            }
+    } else {
+        Modifier
+    }
 
-    // 统一裁剪到圆角轮廓内绘制：描边/高光一律不越出圆角边界，
-    // 根治深色背景下小尺寸图标「四角白色残留 / 方形轮廓」渲染缺陷
-    //（双描边沿轮廓线居中绘制时，外侧一半会透出圆角边界叠加成残影）
-    val outlinePath = Path().apply { addOutline(outline) }
-    clipPath(outlinePath) {
-        // 1. 玻璃主体
-        drawOutline(
-            outline = outline,
-            brush = Brush.verticalGradient(
-                colors = listOf(colors.tintTop, colors.tintBottom),
-                startY = 0f,
-                endY = size.height
+    return this.then(blur).drawBehind {
+        val outline = shape.createOutline(size, layoutDirection, this)
+        val outlinePath = Path().apply { addOutline(outline) }
+
+        clipPath(outlinePath) {
+            // 1. 极薄主体：减少“塑料片”感，把透明度留给真实背光模糊。
+            drawOutline(
+                outline = outline,
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        colors.tintTop,
+                        colors.tintBottom,
+                        Color.Transparent.copy(alpha = 0f)
+                    ),
+                    startY = 0f,
+                    endY = size.height
+                )
             )
-        )
 
-        // 2. 顶部液态光泽（厚玻璃体积感）
-        drawOutline(
-            outline = outline,
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    colors.highlight.copy(alpha = colors.highlight.alpha * 0.42f * highlightAlpha),
-                    Color.Transparent
-                ),
-                startY = 0f,
-                endY = size.height * 0.45f
+            // 2. 左上主高光：模拟曲面玻璃被大面积柔光源照射，
+            // 半径缩小、峰值提高，避免整块面板泛白。
+            drawOutline(
+                outline = outline,
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        colors.highlight.copy(alpha = colors.highlight.alpha * 0.58f * highlightAlpha),
+                        colors.highlight.copy(alpha = colors.highlight.alpha * 0.16f * highlightAlpha),
+                        Color.Transparent
+                    ),
+                    center = Offset(size.width * 0.15f, size.height * 0.08f),
+                    radius = size.minDimension * 0.72f
+                )
             )
-        )
 
-        // 3. 菲涅尔顶缘亮线：顶部中段最亮、向两侧渐隐的抛光边缘
-        drawOutline(
-            outline = outline,
-            brush = Brush.horizontalGradient(
-                colors = listOf(
-                    colors.rimBright.copy(alpha = 0f),
-                    colors.rimBright.copy(alpha = colors.rimBright.alpha * 0.85f * borderAlpha),
-                    colors.rimBright.copy(alpha = 0f)
-                ),
-                startX = 0f,
-                endX = size.width
-            ),
-            style = Stroke(width = 1.5.dp.toPx())
-        )
+            // 3. 右下非常弱的回光：补充厚度，同时保持冷静、通透的黑玻璃观感。
+            drawOutline(
+                outline = outline,
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.035f * highlightAlpha),
+                        Color.Transparent
+                    ),
+                    center = Offset(size.width * 0.88f, size.height * 0.82f),
+                    radius = size.minDimension * 0.58f
+                )
+            )
 
-        // 4. 非对称折射描边：左上受光、右下背光
-        drawOutline(
-            outline = outline,
-            brush = Brush.linearGradient(
-                colors = listOf(
-                    colors.rimBright.copy(alpha = colors.rimBright.alpha * 0.65f * borderAlpha),
-                    colors.rimDim.copy(alpha = colors.rimDim.alpha * 0.9f * borderAlpha)
+            // 4. 顶部菲涅尔高光：比原版更细、更集中，更像抛光玻璃边缘。
+            drawOutline(
+                outline = outline,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        colors.rimBright.copy(alpha = colors.rimBright.alpha * 0.72f * borderAlpha),
+                        colors.rimBright.copy(alpha = colors.rimBright.alpha * 0.30f * borderAlpha),
+                        Color.Transparent
+                    ),
+                    startX = 0f,
+                    endX = size.width
                 ),
-                start = Offset(0f, 0f),
-                end = Offset(size.width, size.height)
-            ),
-            style = Stroke(width = 1.dp.toPx())
-        )
+                style = Stroke(width = 1.15.dp.toPx())
+            )
+
+            // 5. 非对称折射外缘：左上亮、右下暗，并把暗边控制在低权重。
+            drawOutline(
+                outline = outline,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        colors.rimBright.copy(alpha = colors.rimBright.alpha * 0.62f * borderAlpha),
+                        colors.rimBright.copy(alpha = colors.rimBright.alpha * 0.20f * borderAlpha),
+                        colors.rimDim.copy(alpha = colors.rimDim.alpha * 0.72f * borderAlpha)
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width, size.height)
+                ),
+                style = Stroke(width = 0.9.dp.toPx())
+            )
+
+            // 6. 内侧亮缘：用极细的一圈半透明白线模拟玻璃厚度的内折光。
+            drawOutline(
+                outline = outline,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.18f * borderAlpha),
+                        Color.Transparent,
+                        Color.White.copy(alpha = 0.05f * borderAlpha)
+                    ),
+                    start = Offset(0f, 0f),
+                    end = Offset(size.width * 0.78f, size.height)
+                ),
+                style = Stroke(width = 0.55.dp.toPx())
+            )
+
+            // 7. 极轻色散：只留在边缘，不再覆盖整个控件。
+            drawOutline(
+                outline = outline,
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color(0xFFFFC98A).copy(alpha = 0.035f * borderAlpha),
+                        Color.Transparent,
+                        Color.Transparent,
+                        Color(0xFF8AD9FF).copy(alpha = 0.035f * borderAlpha)
+                    ),
+                    startX = 0f,
+                    endX = size.width
+                ),
+                style = Stroke(width = 0.75.dp.toPx())
+            )
+        }
     }
 }
 
@@ -283,13 +371,22 @@ fun Modifier.glow(color: Color, radiusFraction: Float = 1.1f): Modifier = this.d
 }
 
 /**
- * 深色玻璃下阴影为无操作：ColorOS 规格依靠边缘高光/磨砂分层，
- * 投影在深色基底上不可见且增加 GPU 负担。保留 API 兼容旧调用点。
+ * 液态玻璃悬浮阴影（v2 —— 找回被禁用的深度层）：
+ * 原实现完全 no-op，导致玻璃面板贴死在背景上、没有「悬浮」的重量感。
+ * 这里用纯黑柔影 + 极低 alpha，只在 elevation 更大的卡片/按钮上才会
+ * 明显可见，不会在深色底上泛白、也不会有明显的 GPU 额外开销
+ * （shadow 走的是原生 RenderNode，不是自绘 drawBehind）。
  */
 fun Modifier.glassShadow(
-    @Suppress("UNUSED_PARAMETER") elevation: Dp,
-    @Suppress("UNUSED_PARAMETER") shape: Shape
-): Modifier = this
+    elevation: Dp,
+    shape: Shape
+): Modifier = this.shadow(
+    elevation = elevation,
+    shape = shape,
+    ambientColor = Color.Black.copy(alpha = 0.35f),
+    spotColor = Color.Black.copy(alpha = 0.45f),
+    clip = false
+)
 
 // ====================================================================
 // 液态玻璃拉条（GlassSlider · iOS 液态风格）
@@ -309,6 +406,7 @@ fun GlassSlider(
 ) {
     val context = LocalContext.current
     val density = LocalDensity.current
+    val hazeState = LocalGlassHazeState.current
     val min = valueRange.start
     val max = valueRange.endInclusive
     val span = (max - min).coerceAtLeast(1e-4f)
@@ -398,7 +496,12 @@ fun GlassSlider(
                     Color.White.copy(alpha = if (dragging) 0.34f else 0.20f),
                     radiusFraction = 1.7f
                 )
-                .glass(CircleShape, rememberGlassColors())
+                .glass(
+                    CircleShape,
+                    rememberGlassColors(),
+                    hazeState = hazeState,
+                    blurRadius = 10.dp
+                )
                 .drawBehind {
                     drawCircle(
                         color = Color.White.copy(alpha = 0.92f),
@@ -1402,6 +1505,7 @@ fun GlassCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val colors = rememberGlassColors(tintTop, tintBottom)
+    val hazeState = LocalGlassHazeState.current
     val clickInteraction = remember(onClick != null) { MutableInteractionSource() }
     val cardContext = LocalContext.current
     val base = if (onClick != null) {
@@ -1421,7 +1525,12 @@ fun GlassCard(
         modifier = modifier
             .glassShadow(shadowElevation, shape)
             .then(base)
-            .glass(shape, colors)
+            .glass(
+                shape,
+                colors,
+                hazeState = hazeState,
+                blurRadius = 18.dp
+            )
             .padding(contentPadding),
         content = content
     )
@@ -1452,6 +1561,16 @@ fun GlassButton(
     val interaction = remember { MutableInteractionSource() }
     val context = LocalContext.current
     val shape = RoundedCornerShape(50)
+    val hazeState = LocalGlassHazeState.current
+
+    // 按压时高光被"压缩"：模拟手指按下时玻璃表面反光被指腹挤散的液态反馈，
+    // 而不是单纯整体缩放——光斑亮度随按压快速跌落、松手再弹回。
+    val pressed by interaction.collectIsPressedAsState()
+    val pressHighlight by animateFloatAsState(
+        targetValue = if (pressed) 0.4f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 900f),
+        label = "glassButtonHighlight"
+    )
 
     val container = when (style) {
         GlassButtonStyle.Primary -> {
@@ -1467,18 +1586,21 @@ fun GlassButton(
                         highlight = Color.White.copy(alpha = 0.42f),
                         rimBright = Color.White.copy(alpha = 0.80f),
                         rimDim = Color.Black.copy(alpha = 0.12f)
-                    )
+                    ),
+                    highlightAlpha = pressHighlight,
+                    hazeState = hazeState,
+                    blurRadius = 15.dp
                 )
             if (shimmer) glass.shimmerSweep(bandColor = Color(0xFFD9DEEB)) else glass
         }
 
         GlassButtonStyle.Glass -> Modifier
             .glassShadow(4.dp, shape)
-            .glass(shape, rememberGlassColors())
+            .glass(shape, rememberGlassColors(), highlightAlpha = pressHighlight, hazeState = hazeState, blurRadius = 15.dp)
 
         GlassButtonStyle.Danger -> Modifier
             .glassShadow(4.dp, shape)
-            .glass(shape, rememberGlassColors())
+            .glass(shape, rememberGlassColors(), highlightAlpha = pressHighlight, hazeState = hazeState, blurRadius = 15.dp)
     }
 
     val contentColor = when (style) {
@@ -1552,13 +1674,20 @@ fun GlassIconButton(
     val context = LocalContext.current
     // 图标无彩色规格：容器与图标统一中性白玻璃
     val colors = rememberGlassColors()
+    val hazeState = LocalGlassHazeState.current
+    val pressed by interaction.collectIsPressedAsState()
+    val pressHighlight by animateFloatAsState(
+        targetValue = if (pressed) 0.4f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 900f),
+        label = "glassIconButtonHighlight"
+    )
     Box(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
             .glassShadow(3.dp, CircleShape)
             .pressScale(interaction, pressedScale = 0.88f)
-            .glass(CircleShape, colors)
+            .glass(CircleShape, colors, highlightAlpha = pressHighlight, hazeState = hazeState, blurRadius = 12.dp)
             .pressRipple(interaction, clipShape = CircleShape, color = tint, intensity = 1.2f)
             .clickable(interactionSource = interaction, indication = null) {
                 if (AppSettings.soundEnabled) {
@@ -1593,6 +1722,7 @@ fun GlassChip(
     val shape = RoundedCornerShape(50)
     // 单色系规格：选中态为高亮白玻璃，不使用主题色
     val active = Color.White
+    val hazeState = LocalGlassHazeState.current
 
     val borderColor by animateColorAsState(
         targetValue = if (selected) active else Color.White.copy(alpha = 0.14f),
@@ -1626,6 +1756,19 @@ fun GlassChip(
             .glassShadow(if (selected) 6.dp else 2.dp, shape)
             .pressScale(interaction, pressedScale = 0.93f)
             .glow(if (selected) active else Color.Transparent, radiusFraction = 1.5f)
+            .then(
+                if (hazeState != null) {
+                    Modifier
+                        .clip(shape)
+                        .hazeEffect(state = hazeState) {
+                            blurEffect {
+                                blurRadius = 14.dp
+                                colorEffects = listOf(HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)))
+                                noiseFactor = 0.03f
+                            }
+                        }
+                } else Modifier
+            )
             .drawBehind {
                 val outline = shape.createOutline(size, layoutDirection, this)
                 // 玻璃底
@@ -1719,7 +1862,10 @@ fun GlassNavBar(
     tabs: List<GlassNavTab>,
     selected: Int,
     onSelect: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** 传入页面内容侧 hazeSource 绑定的 HazeState，即可让导航栏背后
+     *  真正滚动的内容产生磨砂模糊；为空时退回纯渐变模拟的旧效果。 */
+    hazeState: HazeState? = null
 ) {
     val navContext = LocalContext.current
     // -1 = 无选中（当前页由卫星按钮承载，如设置页）
@@ -1741,9 +1887,30 @@ fun GlassNavBar(
         }
     }
 
+    val navShape = RoundedCornerShape(50)
     Box(
         modifier = modifier
-            .glass(RoundedCornerShape(50), rememberGlassColors())
+            .then(
+                if (hazeState != null) {
+                    // 真实背光模糊（Haze 2.0 rc 契约）：先硬裁到胶囊形状，
+                    // 再用 hazeEffect + blurEffect{} 磨砂——2.0 起所有模糊相关
+                    // 属性（blurRadius/colorEffects/noiseFactor）必须包在
+                    // blurEffect{} 内，不能再像 1.x 那样直接摆在外层 lambda。
+                    Modifier
+                        .clip(navShape)
+                        .hazeEffect(state = hazeState) {
+                            blurEffect {
+                                blurRadius = 18.dp
+                                colorEffects = listOf(
+                                    HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
+                                    HazeColorEffect.tint(Color.White.copy(alpha = 0.03f))
+                                )
+                                noiseFactor = 0.035f
+                            }
+                        }
+                } else Modifier
+            )
+            .glass(navShape, rememberGlassColors())
             .padding(horizontal = 7.dp, vertical = 7.dp)
     ) {
         // 滑动高亮指示条：垫底绘制，随选中切换弹簧滑动
@@ -1865,7 +2032,8 @@ fun GlassFabButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     size: Dp = 46.dp,
-    iconSize: Dp = 20.dp
+    iconSize: Dp = 20.dp,
+    hazeState: HazeState? = null
 ) {
     val context = LocalContext.current
     val interaction = remember { MutableInteractionSource() }
@@ -1901,6 +2069,22 @@ fun GlassFabButton(
                 scaleY = s
             }
             .pressScale(interaction, pressedScale = 0.88f)
+            .then(
+                if (hazeState != null) {
+                    Modifier
+                        .clip(CircleShape)
+                        .hazeEffect(state = hazeState) {
+                            blurEffect {
+                                blurRadius = 18.dp
+                                colorEffects = listOf(
+                                    HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
+                                    HazeColorEffect.tint(Color.White.copy(alpha = 0.03f))
+                                )
+                                noiseFactor = 0.035f
+                            }
+                        }
+                } else Modifier
+            )
             .glow(
                 if (selected) Color.White.copy(alpha = 0.35f) else Color.Transparent,
                 radiusFraction = 1.4f

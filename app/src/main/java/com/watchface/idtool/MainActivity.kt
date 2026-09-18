@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,6 +58,7 @@ import com.watchface.idtool.ui.GlassNavBar
 import com.watchface.idtool.ui.GlobalRippleOverlay
 import com.watchface.idtool.ui.HistoryScreen
 import com.watchface.idtool.ui.LoadingOverlay
+import com.watchface.idtool.ui.LocalGlassHazeState
 import com.watchface.idtool.ui.ModifyScreen
 import com.watchface.idtool.ui.ResultDialog
 import com.watchface.idtool.ui.SettingsScreen
@@ -64,6 +66,8 @@ import com.watchface.idtool.ui.SnowfallLayer
 import com.watchface.idtool.ui.ToastMessage
 import com.watchface.idtool.ui.WatchFaceTheme
 import com.watchface.idtool.ui.WelcomeScreen
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 
 class MainActivity : ComponentActivity() {
 
@@ -197,23 +201,45 @@ private fun AppContent() {
         currentPage = page
     }
 
-    Box(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        // L0 背景：自定义壁纸 / 纯色 / 液态动态（全屏铺满，含系统栏区域；
-        //          图片 ContentScale.Crop 保持原比例居中裁剪，任意屏幕比例不变形）
-        AppBackground()
+    // 液态玻璃采用双源架构：
+    // 1) backgroundHazeState：只捕获壁纸/动态背景，供卡片与按钮使用，避免
+    //    在内容源内部再次 haze，防止递归捕获与滚动期间的额外开销；
+    // 2) contentHazeState：只给底部 Dock / 设置圆钮使用，让导航仍能真实
+    //    模糊滚动页面内容。
+    val backgroundHazeState = rememberHazeState()
+    val contentHazeState = rememberHazeState()
 
-        // L1 内容区：避开系统栏与输入法
+    CompositionLocalProvider(LocalGlassHazeState provides backgroundHazeState) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .imePadding()
+            modifier = Modifier.fillMaxSize()
         ) {
+            // L0 背景也加入 haze source：玻璃现在同时能看到“壁纸/动态光斑”
+            // 和“页面内容”的背光模糊，而不是只模糊列表文字。
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeSource(backgroundHazeState)
+            ) {
+                // L0 背景：自定义壁纸 / 纯色 / 液态动态（全屏铺满，含系统栏区域；
+                //          图片 ContentScale.Crop 保持原比例居中裁剪，任意屏幕比例不变形）
+                AppBackground()
+            }
+
+            // L1 内容区：避开系统栏与输入法
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .imePadding()
+            ) {
             // 页面内容：方向感知的滑动 + 淡入淡出转场
+            // .hazeSource 把这一层实际绘制的内容（列表滚动等）登记为
+            // 模糊来源，供下方导航栏/设置圆钮做背光模糊。
             AnimatedContent(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeSource(contentHazeState),
                 targetState = currentPage,
                 transitionSpec = {
                     val from = PAGES.indexOf(initialState).coerceAtLeast(0)
@@ -270,14 +296,16 @@ private fun AppContent() {
                         GlassNavTab(Icons.Default.History, "记录")
                     ),
                     selected = NAV_TABS.indexOf(currentPage),
-                    onSelect = { index -> switchPage(NAV_TABS[index]) }
+                    onSelect = { index -> switchPage(NAV_TABS[index]) },
+                    hazeState = contentHazeState
                 )
                 Spacer(Modifier.width(12.dp))
                 GlassFabButton(
                     icon = Icons.Default.Settings,
                     contentDescription = "设置",
                     selected = currentPage == "settings",
-                    onClick = { switchPage("settings") }
+                    onClick = { switchPage("settings") },
+                    hazeState = contentHazeState
                 )
             }
 
@@ -305,5 +333,6 @@ private fun AppContent() {
 
         // L4 全局点击光效：View 层监听 · 零拦截 · 最顶层绘制
         GlobalRippleOverlay()
+        }
     }
 }
