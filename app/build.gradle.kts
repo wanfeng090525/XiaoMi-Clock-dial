@@ -54,11 +54,13 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    kotlinOptions {
-        jvmTarget = "21"
-        freeCompilerArgs += listOf(
-            "-opt-in=kotlin.RequiresOptIn"
-        )
+    // Kotlin 2.4 已移除 kotlinOptions，改用 compilerOptions（AGP 8.13 两者都还认，
+    // 但旧写法会打 deprecation 警告，部分配置下直接报错）。
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21)
+            freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn")
+        }
     }
 
     buildFeatures {
