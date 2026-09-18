@@ -38,6 +38,9 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -111,6 +114,7 @@ import com.watchface.idtool.ClickSound
 import com.watchface.idtool.SoundType
 import java.io.File
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.coroutineScope
@@ -188,12 +192,13 @@ fun rememberGlassColors(
 )
 
 /**
- * 液态玻璃材质绘制（v2 —— 菲涅尔折射规格）：
+ * 液态玻璃材质绘制（v3 —— iOS Liquid Glass 折射规格）：
  *
  *   1. 玻璃主体    上亮下暗的低填充底（8~15% 白）
- *   2. 顶部光泽    自上而下渐隐的镜面高光（模拟厚玻璃）
+ *   2. 椭圆高光泡  左上偏心的镜面光斑（球面厚玻璃体积感，替代平铺渐变）
  *   3. 菲涅尔亮缘  顶边 1.5px 亮线，向两端渐隐（抛光边缘）
  *   4. 折射描边    左上受光 → 右下背光的非对称渐变描边
+ *   5. 色散裂纹    亮缘两端极低透明度的冷暖分光（模拟光线经玻璃折射的色散）
  */
 fun Modifier.glass(
     shape: Shape,
@@ -218,16 +223,31 @@ fun Modifier.glass(
             )
         )
 
-        // 2. 顶部液态光泽（厚玻璃体积感）
+        // 2. 椭圆高光泡：偏心于左上 22%/18% 处的球面反光斑，
+        // 比整片平铺的顶部渐变更接近真实玻璃「厚度感」——
+        // 光斑本身有柔和衰减半径，而非硬边裁切。
+        drawOutline(
+            outline = outline,
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    colors.highlight.copy(alpha = colors.highlight.alpha * 0.55f * highlightAlpha),
+                    colors.highlight.copy(alpha = colors.highlight.alpha * 0.18f * highlightAlpha),
+                    Color.Transparent
+                ),
+                center = Offset(size.width * 0.22f, size.height * 0.18f),
+                radius = size.maxDimension * 0.75f
+            )
+        )
+        // 兜底一层极弱的顶部渐隐，避免光斑覆盖不到的宽扁形状顶部发暗
         drawOutline(
             outline = outline,
             brush = Brush.verticalGradient(
                 colors = listOf(
-                    colors.highlight.copy(alpha = colors.highlight.alpha * 0.42f * highlightAlpha),
+                    colors.highlight.copy(alpha = colors.highlight.alpha * 0.14f * highlightAlpha),
                     Color.Transparent
                 ),
                 startY = 0f,
-                endY = size.height * 0.45f
+                endY = size.height * 0.4f
             )
         )
 
@@ -259,6 +279,24 @@ fun Modifier.glass(
             ),
             style = Stroke(width = 1.dp.toPx())
         )
+
+        // 5. 色散裂纹：亮缘两端叠一层极低透明度的冷暖分光丝
+        // （暖橙靠左 / 冷青靠右），模拟液态玻璃边缘的轻微色散折射，
+        // alpha 控制在 6% 以内，纯做质感点缀，不影响可读性。
+        drawOutline(
+            outline = outline,
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color(0xFFFFC98A).copy(alpha = 0.06f * borderAlpha),
+                    Color.Transparent,
+                    Color.Transparent,
+                    Color(0xFF8AD9FF).copy(alpha = 0.06f * borderAlpha)
+                ),
+                startX = 0f,
+                endX = size.width
+            ),
+            style = Stroke(width = 1.dp.toPx())
+        )
     }
 }
 
@@ -283,13 +321,22 @@ fun Modifier.glow(color: Color, radiusFraction: Float = 1.1f): Modifier = this.d
 }
 
 /**
- * 深色玻璃下阴影为无操作：ColorOS 规格依靠边缘高光/磨砂分层，
- * 投影在深色基底上不可见且增加 GPU 负担。保留 API 兼容旧调用点。
+ * 液态玻璃悬浮阴影（v2 —— 找回被禁用的深度层）：
+ * 原实现完全 no-op，导致玻璃面板贴死在背景上、没有「悬浮」的重量感。
+ * 这里用纯黑柔影 + 极低 alpha，只在 elevation 更大的卡片/按钮上才会
+ * 明显可见，不会在深色底上泛白、也不会有明显的 GPU 额外开销
+ * （shadow 走的是原生 RenderNode，不是自绘 drawBehind）。
  */
 fun Modifier.glassShadow(
-    @Suppress("UNUSED_PARAMETER") elevation: Dp,
-    @Suppress("UNUSED_PARAMETER") shape: Shape
-): Modifier = this
+    elevation: Dp,
+    shape: Shape
+): Modifier = this.shadow(
+    elevation = elevation,
+    shape = shape,
+    ambientColor = Color.Black.copy(alpha = 0.35f),
+    spotColor = Color.Black.copy(alpha = 0.45f),
+    clip = false
+)
 
 // ====================================================================
 // 液态玻璃拉条（GlassSlider · iOS 液态风格）
@@ -446,11 +493,15 @@ fun GlassSlider(
     }
 }
 
-/** 主按钮微光扫过：一道高光带周期性从左至右掠过 */
+/** 主按钮微光扫过：一道高光带周期性从左至右掠过。
+ *  高光带必须裁剪到按钮形状内：drawRect 本身不感知圆角，
+ *  不裁剪时斜向光带会溢出胶囊两端圆角，在深色背景上留下
+ *  「长方形光斑」突出显示（未按下时也可见）。 */
 @Composable
 fun Modifier.shimmerSweep(
     periodMillis: Int = 2800,
-    bandColor: Color = Color.White
+    bandColor: Color = Color.White,
+    shape: Shape = RoundedCornerShape(50)
 ): Modifier {
     val transition = rememberInfiniteTransition(label = "shimmer")
     val progress by transition.animateFloat(
@@ -465,17 +516,22 @@ fun Modifier.shimmerSweep(
     return this.drawBehind {
         val bandWidth = size.width * 0.42f
         val x0 = progress * size.width
-        drawRect(
-            brush = Brush.linearGradient(
-                colors = listOf(
-                    Color.Transparent,
-                    bandColor.copy(alpha = 0.28f),
-                    Color.Transparent
-                ),
-                start = Offset(x0, 0f),
-                end = Offset(x0 + bandWidth, size.height)
+        val outlinePath = Path().apply {
+            addOutline(shape.createOutline(size, layoutDirection, this@drawBehind))
+        }
+        clipPath(outlinePath) {
+            drawRect(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        bandColor.copy(alpha = 0.28f),
+                        Color.Transparent
+                    ),
+                    start = Offset(x0, 0f),
+                    end = Offset(x0 + bandWidth, size.height)
+                )
             )
-        )
+        }
     }
 }
 
@@ -1307,12 +1363,12 @@ fun GlobalRippleOverlay(modifier: Modifier = Modifier) {
                 tick.let { }
 
                 val now = System.nanoTime()
-                ripples.removeAll { now - it.startNanos > RIPPLE_LIFETIME }
+                ripples.removeAll { now - it.startNanos > GLOBAL_RIPPLE_LIFETIME }
                 if (ripples.isEmpty()) return@drawBehind
 
                 ripples.forEach { ripple ->
                     val age = (now - ripple.startNanos).coerceAtLeast(0)
-                    val tR = (age.toFloat() / RIPPLE_LIFETIME).coerceIn(0f, 1f)
+                    val tR = (age.toFloat() / GLOBAL_RIPPLE_LIFETIME).coerceIn(0f, 1f)
                     val cx = ripple.x
                     val cy = ripple.y
                     val reach = size.maxDimension * 0.55f
@@ -1404,24 +1460,27 @@ fun GlassCard(
     val colors = rememberGlassColors(tintTop, tintBottom)
     val clickInteraction = remember(onClick != null) { MutableInteractionSource() }
     val cardContext = LocalContext.current
+    // 涟漪放在玻璃填充之后（绘制于其上），与 QuickTile / FileDropCard 一致：
+    // 能量涟漪照亮玻璃表面而不是被玻璃底色盖住；pressScale 必须保持在
+    // glass 之前，确保按压缩放覆盖整个卡体（含玻璃层）。
     val base = if (onClick != null) {
         Modifier
-            .pressScale(clickInteraction)
+            .pressRipple(clickInteraction, clipShape = shape, intensity = 1.1f)
             .clickable(interactionSource = clickInteraction, indication = null) {
                 if (AppSettings.soundEnabled) {
                     ClickSound.play(cardContext)
                 }
                 onClick()
             }
-            .pressRipple(clickInteraction, clipShape = shape, intensity = 1.1f)
     } else {
         Modifier
     }
     Column(
         modifier = modifier
             .glassShadow(shadowElevation, shape)
-            .then(base)
+            .pressScale(clickInteraction)
             .glass(shape, colors)
+            .then(base)
             .padding(contentPadding),
         content = content
     )
@@ -1453,6 +1512,15 @@ fun GlassButton(
     val context = LocalContext.current
     val shape = RoundedCornerShape(50)
 
+    // 按压时高光被"压缩"：模拟手指按下时玻璃表面反光被指腹挤散的液态反馈，
+    // 而不是单纯整体缩放——光斑亮度随按压快速跌落、松手再弹回。
+    val pressed by interaction.collectIsPressedAsState()
+    val pressHighlight by animateFloatAsState(
+        targetValue = if (pressed) 0.4f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 900f),
+        label = "glassButtonHighlight"
+    )
+
     val container = when (style) {
         GlassButtonStyle.Primary -> {
             // 提亮玻璃规格：半透明白玻璃底 + 亮边环 + 内容光晕（与整体液态玻璃同语言）
@@ -1467,18 +1535,19 @@ fun GlassButton(
                         highlight = Color.White.copy(alpha = 0.42f),
                         rimBright = Color.White.copy(alpha = 0.80f),
                         rimDim = Color.Black.copy(alpha = 0.12f)
-                    )
+                    ),
+                    highlightAlpha = pressHighlight
                 )
-            if (shimmer) glass.shimmerSweep(bandColor = Color(0xFFD9DEEB)) else glass
+            if (shimmer) glass.shimmerSweep(bandColor = Color(0xFFD9DEEB), shape = shape) else glass
         }
 
         GlassButtonStyle.Glass -> Modifier
             .glassShadow(4.dp, shape)
-            .glass(shape, rememberGlassColors())
+            .glass(shape, rememberGlassColors(), highlightAlpha = pressHighlight)
 
         GlassButtonStyle.Danger -> Modifier
             .glassShadow(4.dp, shape)
-            .glass(shape, rememberGlassColors())
+            .glass(shape, rememberGlassColors(), highlightAlpha = pressHighlight)
     }
 
     val contentColor = when (style) {
@@ -1530,6 +1599,8 @@ fun GlassButton(
                 fontWeight = FontWeight.Medium,
                 letterSpacing = 0.3.sp,
                 textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(horizontal = 10.dp)
             )
         }
@@ -1550,15 +1621,23 @@ fun GlassIconButton(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val context = LocalContext.current
-    // 图标无彩色规格：容器与图标统一中性白玻璃
-    val colors = rememberGlassColors()
+    // 图标无彩色规格：容器与图标统一中性白玻璃；
+    // 调用方传入的 tintTop/tintBottom 之前被静默丢弃，此处修复透传
+    //（删除等语义色按钮由此恢复其预期的淡色玻璃底）。
+    val colors = rememberGlassColors(tintTop, tintBottom)
+    val pressed by interaction.collectIsPressedAsState()
+    val pressHighlight by animateFloatAsState(
+        targetValue = if (pressed) 0.4f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 900f),
+        label = "glassIconButtonHighlight"
+    )
     Box(
         modifier = modifier
             .size(size)
             .clip(CircleShape)
             .glassShadow(3.dp, CircleShape)
             .pressScale(interaction, pressedScale = 0.88f)
-            .glass(CircleShape, colors)
+            .glass(CircleShape, colors, highlightAlpha = pressHighlight)
             .pressRipple(interaction, clipShape = CircleShape, color = tint, intensity = 1.2f)
             .clickable(interactionSource = interaction, indication = null) {
                 if (AppSettings.soundEnabled) {
@@ -1719,7 +1798,10 @@ fun GlassNavBar(
     tabs: List<GlassNavTab>,
     selected: Int,
     onSelect: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** 传入页面内容侧 hazeSource 绑定的 HazeState，即可让导航栏背后
+     *  真正滚动的内容产生磨砂模糊；为空时退回纯渐变模拟的旧效果。 */
+    hazeState: HazeState? = null
 ) {
     val navContext = LocalContext.current
     // -1 = 无选中（当前页由卫星按钮承载，如设置页）
@@ -1741,9 +1823,22 @@ fun GlassNavBar(
         }
     }
 
+    val navShape = RoundedCornerShape(50)
     Box(
         modifier = modifier
-            .glass(RoundedCornerShape(50), rememberGlassColors())
+            .then(
+                if (hazeState != null) {
+                    // 真实背光模糊：先硬裁到胶囊形状，再用 hazeEffect 磨砂
+                    Modifier
+                        .clip(navShape)
+                        .hazeEffect(state = hazeState) {
+                            blurRadius = 22.dp
+                            tints = listOf(HazeTint(Color.Black.copy(alpha = 0.30f)))
+                            noiseFactor = 0.06f
+                        }
+                } else Modifier
+            )
+            .glass(navShape, rememberGlassColors())
             .padding(horizontal = 7.dp, vertical = 7.dp)
     ) {
         // 滑动高亮指示条：垫底绘制，随选中切换弹簧滑动
@@ -1865,7 +1960,8 @@ fun GlassFabButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     size: Dp = 46.dp,
-    iconSize: Dp = 20.dp
+    iconSize: Dp = 20.dp,
+    hazeState: HazeState? = null
 ) {
     val context = LocalContext.current
     val interaction = remember { MutableInteractionSource() }
@@ -1901,6 +1997,17 @@ fun GlassFabButton(
                 scaleY = s
             }
             .pressScale(interaction, pressedScale = 0.88f)
+            .then(
+                if (hazeState != null) {
+                    Modifier
+                        .clip(CircleShape)
+                        .hazeEffect(state = hazeState) {
+                            blurRadius = 22.dp
+                            tints = listOf(HazeTint(Color.Black.copy(alpha = 0.30f)))
+                            noiseFactor = 0.06f
+                        }
+                } else Modifier
+            )
             .glow(
                 if (selected) Color.White.copy(alpha = 0.35f) else Color.Transparent,
                 radiusFraction = 1.4f

@@ -92,6 +92,10 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+    // 液态玻璃真实背景模糊：Haze 1.6.10 是与 AGP 8.13 / compileSdk 36 工具链
+    // 兼容的最新稳定版（1.7+ 和 2.0 线均强制要求 Compose 1.12 + AGP 9.1+）。
+    // 具体见 Components.kt 里的 hazeEffect 用法。
+    implementation("dev.chrisbanes.haze:haze:1.6.10")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

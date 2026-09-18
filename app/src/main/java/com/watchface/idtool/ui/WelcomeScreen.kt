@@ -13,6 +13,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -500,13 +501,21 @@ private fun QuickTile(
     val tileContext = androidx.compose.ui.platform.LocalContext.current
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    // 按压时高光被「压缩」：与 GlassButton 同一液态反馈语言——
+    // 玻璃高光随按压快速跌落、松手弹回，瓷砖主体同步缩放。
+    val pressed by interaction.collectIsPressedAsState()
+    val pressHighlight by animateFloatAsState(
+        targetValue = if (pressed) 0.45f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 900f),
+        label = "tilePressHighlight"
+    )
 
     Box(
         modifier = modifier
             .aspectRatio(1.55f)
             .glassShadow(8.dp, RoundedCornerShape(22.dp))
             .pressScale(interaction, pressedScale = 0.94f)
-            .glass(RoundedCornerShape(22.dp), rememberGlassColors())
+            .glass(RoundedCornerShape(22.dp), rememberGlassColors(), highlightAlpha = pressHighlight)
             .pressRipple(interaction, clipShape = RoundedCornerShape(22.dp), color = tint, intensity = 1.2f)
             .clickable(
                 interactionSource = interaction,
@@ -531,7 +540,8 @@ private fun QuickTile(
                     .size(34.dp)
                     .glass(
                         RoundedCornerShape(12.dp),
-                        rememberGlassColors()
+                        rememberGlassColors(),
+                        highlightAlpha = pressHighlight
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -1490,13 +1500,20 @@ private fun KeyExtractionTile(
     val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
     val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val isExtracting = state.isExtracting
+    // 与 QuickTile 一致的按压高光衰减反馈
+    val pressed by interaction.collectIsPressedAsState()
+    val pressHighlight by animateFloatAsState(
+        targetValue = if (pressed) 0.45f else 1f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 900f),
+        label = "extractTilePressHighlight"
+    )
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .glassShadow(8.dp, RoundedCornerShape(22.dp))
             .pressScale(interaction, pressedScale = 0.96f)
-            .glass(RoundedCornerShape(22.dp), rememberGlassColors())
+            .glass(RoundedCornerShape(22.dp), rememberGlassColors(), highlightAlpha = pressHighlight)
             .pressRipple(interaction, clipShape = RoundedCornerShape(22.dp), color = Color.White, intensity = 1f)
             .clickable(
                 interactionSource = interaction,

@@ -2,11 +2,14 @@ package com.watchface.idtool.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -157,16 +160,25 @@ private val AppShapes = Shapes(
 
 /**
  * 深色玻璃主题（参照 ColorOS 控制中心，固定深色基底）。
+ *
+ * 全局禁用 Material 默认 ripple（LocalRippleConfiguration = null）：
+ * 默认 ripple 以组件「矩形边界」为裁剪区，在圆形图标/色块/开关上按压时
+ * 会溢出形状边界，呈现「点击后出现突出正方形/长方形」的异常显示。
+ * 本应用拥有自绘的 pressRipple 能量涟漪 + 全屏 GlobalRippleOverlay，
+ * Material ripple 纯属多余，禁用后按压反馈仍完整。
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WatchFaceTheme(
     @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
-    MaterialTheme(
-        colorScheme = LiquidDarkColors,
-        typography = LiquidTypography,
-        shapes = AppShapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalRippleConfiguration provides null) {
+        MaterialTheme(
+            colorScheme = LiquidDarkColors,
+            typography = LiquidTypography,
+            shapes = AppShapes,
+            content = content
+        )
+    }
 }

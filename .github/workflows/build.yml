@@ -32,7 +32,9 @@ jobs:
 
       # 同时构建 Debug(自动签名)与 Release(使用源码 keystore/watchface.jks 自动签名)
       - name: 一键构建 Debug + 签名 Release (gradlew wrapper)
-        run: ./gradlew --no-daemon assembleDebug assembleRelease
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug assembleRelease
 
       - name: 上传 Debug APK
         uses: actions/upload-artifact@v4

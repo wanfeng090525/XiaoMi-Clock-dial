@@ -1046,6 +1046,7 @@ private fun ColorPickerDialog(
     val initHsv = FloatArray(3).apply {
         android.graphics.Color.colorToHSV((initial and 0xFFFFFFFFL).toInt(), this)
     }
+    val context = androidx.compose.ui.platform.LocalContext.current
     var hue by remember { mutableFloatStateOf(initHsv[0]) }
     var sat by remember { mutableFloatStateOf(initHsv[1]) }
     var value by remember { mutableFloatStateOf(initHsv[2].coerceIn(0.06f, 0.46f)) }
@@ -1103,17 +1104,29 @@ private fun ColorPickerDialog(
                             val h = FloatArray(3).apply { android.graphics.Color.colorToHSV(argb, this) }
                             kotlin.math.abs(h[0] - hue) < 4f && kotlin.math.abs(h[1] - sat) < 0.06f
                         }
+                        // 禁用默认 indication：默认 ripple 裁剪到矩形边界，
+                        // 圆形色块按压时会突出一个方块；改用弹簧缩放反馈。
+                        val swatchInteraction = remember {
+                            androidx.compose.foundation.interaction.MutableInteractionSource()
+                        }
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(30.dp)
+                                .pressScale(swatchInteraction, pressedScale = 0.86f)
                                 .border(
                                     width = if (selected) 2.dp else 1.dp,
                                     color = if (selected) Color.White else Color.White.copy(alpha = 0.20f),
                                     shape = CircleShape
                                 )
                                 .background(color = Color(preset), shape = CircleShape)
-                                .clickable {
+                                .clickable(
+                                    interactionSource = swatchInteraction,
+                                    indication = null
+                                ) {
+                                    if (com.watchface.idtool.AppSettings.soundEnabled) {
+                                        com.watchface.idtool.ClickSound.play(context)
+                                    }
                                     val h = FloatArray(3).apply { android.graphics.Color.colorToHSV(argb, this) }
                                     hue = h[0]; sat = h[1]; value = h[2]
                                 }
