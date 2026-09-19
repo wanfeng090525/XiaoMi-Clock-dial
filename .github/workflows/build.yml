@@ -29,10 +29,66 @@ jobs:
         run: |
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          # AGP 9.1 + compileSdk 37 需要 platform 37 与对应 build-tools
+          sdkmanager "platforms;android-37" "build-tools;37.0.0" >/dev/null 2>&1 \
+            || echo "::warning::sdkmanager 安装 android-37 失败，继续尝试构建"
+          sdkmanager --list_installed 2>/dev/null | head -30 || true
 
       # 同时构建 Debug(自动签名)与 Release(使用源码 keystore/watchface.jks 自动签名)
+      # 构建输出全程落盘，失败时供后续步骤提取错误
       - name: 一键构建 Debug + 签名 Release (gradlew wrapper)
-        run: ./gradlew --no-daemon assembleDebug assembleRelease
+        id: gradle_build
+        continue-on-error: true
+        run: |
+          set +e
+          ./gradlew --no-daemon assembleDebug assembleRelease 2>&1 | tee gradle-full.log
+          echo "exit_code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      # 失败时把关键错误行单独抽出来，作为可下载文件（日志 API 在部分网络下不可达）
+      - name: 提取编译错误摘要
+        if: always()
+        run: |
+          {
+            echo "===== 构建退出码: ${{ steps.gradle_build.outputs.exit_code }} ====="
+            echo
+            echo "----- 错误行 (e: / error: / FAILURE / What went wrong) -----"
+            grep -nE "^\s*(e: |error: )|^FAILURE:|What went wrong|Could not (resolve|find|determine)|Unresolved reference|Execution failed for task|Caused by:|incompatible|A problem occurred" gradle-full.log | head -200 || echo "(未匹配到错误行)"
+            echo
+            echo "----- 最后 150 行 -----"
+            tail -150 gradle-full.log
+          } > build-error-summary.txt
+          echo "摘要行数: $(wc -l < build-error-summary.txt)"
+
+      - name: 上传构建日志（失败时尤其需要）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ github.run_number }}
+          path: |
+            build-error-summary.txt
+            gradle-full.log
+          if-no-files-found: warn
+          compression-level: 9
+
+      # 失败时把错误摘要发到 Release 正文。
+      # 原因：Actions 的 job logs / artifacts 下载接口在部分网络环境下会被
+      # 第三方代理拦截（403），而 Release 元数据可以正常读取。
+      - name: 失败时把错误摘要发布到 Release
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="errlog-${{ github.run_number }}"
+          gh release create "$TAG" \
+            --title "构建错误日志 #${{ github.run_number }}" \
+            --notes-file build-error-summary.txt 2>/dev/null \
+          || gh release edit "$TAG" --notes-file build-error-summary.txt
+
+      - name: 若构建失败则中止后续步骤
+        if: steps.gradle_build.outputs.exit_code != '0'
+        run: |
+          echo "构建失败，退出码 ${{ steps.gradle_build.outputs.exit_code }}"
+          exit 1
 
       - name: 上传 Debug APK
         uses: actions/upload-artifact@v4

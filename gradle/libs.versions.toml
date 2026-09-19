@@ -1,10 +1,12 @@
 [versions]
-agp = "8.13.0"
-kotlin = "2.2.20"
-coreKtx = "1.15.0"
-lifecycleRuntimeKtx = "2.8.7"
-activityCompose = "1.9.3"
-composeBom = "2025.03.00"
+# AGP 9.1.0 + compileSdk 37 是 haze 2.0.0-rc01 传递依赖（compose ui 1.12.x /
+# lifecycle 2.11.0）的硬性要求，不可下调
+agp = "9.1.0"
+kotlin = "2.4.20"
+coreKtx = "1.19.0"
+lifecycleRuntimeKtx = "2.11.0"
+activityCompose = "1.13.0"
+composeBom = "2026.09.00"
 navigationCompose = "2.8.5"
 documentfile = "1.0.1"
 junit = "4.13.2"
@@ -27,5 +29,7 @@ junit = { group = "junit", name = "junit", version.ref = "junit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+# 注意：AGP 9.0 起 Kotlin 由 AGP 内建，`kotlin-android` 插件已不可用，
+# 因此这里不再声明它。kotlin 版本仅供 Compose 编译器插件使用；
+# 真正驱动编译的 KGP 版本通过根 build.gradle.kts 的 buildscript classpath 覆盖。
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

@@ -38,10 +38,11 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import dev.chrisbanes.haze.HazeInput
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
-import dev.chrisbanes.haze.blur.blurEffect
+import dev.chrisbanes.haze.blur.hazeBlur
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -219,24 +220,27 @@ fun Modifier.glass(
     hazeState: HazeState? = null,
     blurRadius: Dp = GlassBlurRadius
 ): Modifier {
-    // Haze 必须先于材质绘制层，保证模糊的是玻璃下面的内容，而不是
-    // 玻璃自身；最终再 clip，让 Haze 的输出和材质都严格服从玻璃形状。
+    // Haze 必须先于材质绘制层，保证模糊的是玻璃下面的内容，而不是玻璃自身。
+    // 「方形/矩形背景块」修复（square-fix）：Haze 默认为避免边缘采样缺失会
+    // 向外扩展模糊层，圆角卡片会把扩展后的矩形采样区带进玻璃区域。这里
+    // expandLayerBounds = false 禁止扩展，并把 clip 放在 effect 之后，
+    // 让模糊输出严格裁剪到卡片的圆角边界内。
     val blur = if (hazeState != null && blurRadius.value > 0f) {
         Modifier
-            // Haze 的模糊层默认可能为了避免边缘采样缺失而向外扩展 Layer。
-            // 对圆角卡片这会把“扩展后的矩形采样区”带进玻璃区域，形成截图里
-            // 那种很明显的方形/矩形背景块。这里禁止扩展，并把 clip 放在 effect
-            // 之后，让最终效果严格服从卡片的圆角边界。
-            .hazeEffect(state = hazeState, expandLayerBounds = false) {
-                blurEffect {
-                    this.blurRadius = blurRadius
-                    colorEffects = listOf(
-                        HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
-                        HazeColorEffect.tint(Color.White.copy(alpha = 0.035f))
+            .hazeBlur(
+                input = HazeInput.Sources(hazeState),
+                style = HazeBlurStyle {
+                    blurRadius(blurRadius)
+                    noiseFactor(GlassNoiseFactor)
+                    colorEffects(
+                        listOf(
+                            HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
+                            HazeColorEffect.tint(Color.White.copy(alpha = 0.035f))
+                        )
                     )
-                    noiseFactor = GlassNoiseFactor
-                }
-            }
+                },
+                expandLayerBounds = false
+            )
             .clip(shape)
     } else {
         Modifier
@@ -1764,13 +1768,16 @@ fun GlassChip(
                 if (hazeState != null) {
                     Modifier
                         .clip(shape)
-                        .hazeEffect(state = hazeState) {
-                            blurEffect {
-                                blurRadius = 14.dp
-                                colorEffects = listOf(HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)))
-                                noiseFactor = 0.03f
+                        .hazeBlur(
+                            input = HazeInput.Sources(hazeState),
+                            style = HazeBlurStyle {
+                                blurRadius(14.dp)
+                                colorEffects(
+                                    listOf(HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)))
+                                )
+                                noiseFactor(0.03f)
                             }
-                        }
+                        )
                 } else Modifier
             )
             .drawBehind {
@@ -1896,22 +1903,25 @@ fun GlassNavBar(
         modifier = modifier
             .then(
                 if (hazeState != null) {
-                    // 真实背光模糊（Haze 2.0 rc 契约）：先硬裁到胶囊形状，
-                    // 再用 hazeEffect + blurEffect{} 磨砂——2.0 起所有模糊相关
-                    // 属性（blurRadius/colorEffects/noiseFactor）必须包在
-                    // blurEffect{} 内，不能再像 1.x 那样直接摆在外层 lambda。
+                    // 真实背光模糊（Haze 2.0.0-rc01 契约）：先硬裁到胶囊形状，
+                    // 再用 hazeBlur(input, style) 磨砂——rc01 里模糊入口是
+                    // hazeBlur，所有属性（blurRadius/colorEffects/noiseFactor）
+                    // 写在 HazeBlurStyle { } 作用域中，且都是函数调用而非属性赋值。
                     Modifier
                         .clip(navShape)
-                        .hazeEffect(state = hazeState) {
-                            blurEffect {
-                                blurRadius = 18.dp
-                                colorEffects = listOf(
-                                    HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
-                                    HazeColorEffect.tint(Color.White.copy(alpha = 0.03f))
+                        .hazeBlur(
+                            input = HazeInput.Sources(hazeState),
+                            style = HazeBlurStyle {
+                                blurRadius(18.dp)
+                                colorEffects(
+                                    listOf(
+                                        HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
+                                        HazeColorEffect.tint(Color.White.copy(alpha = 0.03f))
+                                    )
                                 )
-                                noiseFactor = 0.035f
+                                noiseFactor(0.035f)
                             }
-                        }
+                        )
                 } else Modifier
             )
             .glass(navShape, rememberGlassColors())
@@ -2077,16 +2087,19 @@ fun GlassFabButton(
                 if (hazeState != null) {
                     Modifier
                         .clip(CircleShape)
-                        .hazeEffect(state = hazeState) {
-                            blurEffect {
-                                blurRadius = 18.dp
-                                colorEffects = listOf(
-                                    HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
-                                    HazeColorEffect.tint(Color.White.copy(alpha = 0.03f))
+                        .hazeBlur(
+                            input = HazeInput.Sources(hazeState),
+                            style = HazeBlurStyle {
+                                blurRadius(18.dp)
+                                colorEffects(
+                                    listOf(
+                                        HazeColorEffect.tint(Color.Black.copy(alpha = 0.20f)),
+                                        HazeColorEffect.tint(Color.White.copy(alpha = 0.03f))
+                                    )
                                 )
-                                noiseFactor = 0.035f
+                                noiseFactor(0.035f)
                             }
-                        }
+                        )
                 } else Modifier
             )
             .glow(
